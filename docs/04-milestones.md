@@ -1,141 +1,103 @@
 # Couple Photobooth Milestones
 
-## Milestone 0: Foundation and Decisions
+## Milestone 0: Foundation, Database & Landing Page (First Step)
 
 Deliverables:
-
-- Confirm product rules and privacy promise.
-- Set up React, TypeScript, Vite, linting, and testing.
-- Choose Supabase project, Stripe account, signaling deployment, and TURN provider.
-- Define room, user, plan, frame, and usage schemas.
-- Create the initial design tokens and mobile-first shell.
+- Confirm product rules and privacy promise (zero server-side media storage).
+- Set up Bun as the primary package manager (`bun.lock`, install dependencies).
+- Set up Prisma ORM with PostgreSQL (`prisma/schema.prisma` and singleton client).
+- Define database models: User, Account, Room, RoomParticipant, Frame, and Usage.
+- Define core TypeScript types: rooms, participants, frames, capture states, and WebRTC messages.
+- Create initial design system: romantic color tokens, elegant typography, responsive utilities.
+- Build mobile-first Landing Page: hero film-strip demo, room creation modal/entry, privacy highlight, and feature preview.
 
 Exit criteria:
-
-- Application runs locally and in a staging environment.
-- Authentication and database environments are configured.
+- App runs cleanly with Bun (`bun dev` and `bun run build`).
+- Prisma schema validates and generates types with `bunx prisma generate`.
+- Landing page renders with responsive visual polish.
 
 ## Milestone 1: Authentication and Private Rooms
 
 Deliverables:
-
-- Sign in with Google and email magic links.
-- Create booth page.
-- Invitation URL, QR code, and display code.
-- Authenticated join flow.
-- Room waiting and expiration states.
-- Temporary WebSocket signaling.
+- User authentication with email/magic-link and social logins.
+- Create booth flow: generate secure cryptographic room token, short display code, and QR code.
+- Room join flow: validate invitation token and authenticate guest.
+- Room lobby state: waiting, participant ready checks, and expiration countdown.
+- WebSocket signaling server setup for WebRTC handshake.
 
 Exit criteria:
+- Two real devices can authenticate and join the same private room.
+- Unauthorized users cannot enter without a valid token.
 
-- Two real devices can authenticate and join the same room.
-- Unauthorized users cannot join by guessing a display code.
-
-## Milestone 2: Photo Booth MVP
+## Milestone 2: Photo Booth Core Experience (MVP)
 
 Deliverables:
-
-- Camera preview and permission handling.
-- Countdown and synchronized capture.
-- Retake and confirmation flow.
-- WebRTC peer connection.
-- Canvas-based photo composition.
-- Five to ten default romantic frames.
-- Local PNG/JPEG download.
+- Dual-camera preview with front/rear toggle and permissions handling.
+- Synchronized countdown (3s, 5s, 10s) via WebRTC DataChannel.
+- Synchronized shutter capture on both devices.
+- Retake, preview, and confirmation flow.
+- Canvas-based photo composer: merge photos into multi-slot romantic frames.
+- Initial catalog of 5+ default romantic frames (classic 4-cut strip, polaroid duo, heart frame, vintage).
+- Direct local download (PNG/JPEG) on user device.
 
 Exit criteria:
+- A couple on separate devices can complete a full photo session.
+- Photos are composed strictly inside the browser; zero media reaches our server.
 
-- A couple can complete a full photo session on mobile devices.
-- The backend receives no photo or video payload.
-
-## Milestone 3: Plans and Billing
+## Milestone 3: Custom Frame Creator & Preset Catalog
 
 Deliverables:
-
-- Free and paid plan definitions.
-- Centralized entitlement service and plan configuration.
-- Feature flags for free, trial, paid-only, and grandfathered states.
-- Stripe checkout and customer portal.
-- Entitlement checks for frames, resolution, watermark, Drive, video, and room limits.
-- Usage counters and billing state handling.
+- Frame editor canvas: customize slots, borders, stickers, colors, and romantic text.
+- Save custom frame templates locally (localStorage / IndexedDB).
+- Import and select custom frames in live booth sessions.
 
 Exit criteria:
+- Users can create and use custom photo frames during booth sessions without backend uploads.
 
-- Paid features are enforced consistently on the client and backend.
-- Subscription cancellation and expiration are handled correctly.
-- Moving a feature from free to paid requires configuration changes, not component rewrites.
-
-## Milestone 4: Google Drive Export
+## Milestone 4: Google Drive Direct Export
 
 Deliverables:
-
-- Google OAuth consent flow.
-- Direct browser-to-Drive upload.
-- Upload progress and failure states.
-- Filename and export format selection.
+- Opt-in Google OAuth consent flow for Drive scope.
+- Direct browser-to-Google Drive upload (resumable/multipart).
+- Upload progress indicators and fallback to local download on failure.
 
 Exit criteria:
+- Users can save their photo strip directly into their personal Google Drive without server intermediary.
 
-- A user can save an export to Drive without the media passing through our server.
-
-## Milestone 5: Custom Frame Creator
+## Milestone 5: Synchronized Short Video
 
 Deliverables:
-
-- Fixed-size frame canvas.
-- Add, move, resize, rotate, and delete layers.
-- Text, colors, stickers, borders, and photo slots.
-- Local save/load of frame documents.
-- Reuse a custom frame in a booth.
+- Synchronized short video clip recording via MediaRecorder.
+- Side-by-side / split-screen video playback preview.
+- Browser-based video clip export (WebM/MP4 fallback).
 
 Exit criteria:
+- Supported mobile browsers can capture and export short couple video clips without crashing or high memory strain.
 
-- A user can create and reuse a custom frame without backend media storage.
-
-## Milestone 6: Short Video
+## Milestone 6: Plans, Billing & Monetization (Moved to Final Phase)
 
 Deliverables:
-
-- Synchronized short video capture.
-- Video preview and retake.
-- Basic split-screen composition.
-- WebM export where supported.
-- Fallback raw video download.
+- Stripe checkout and customer billing portal integration.
+- Centralized entitlement service (`canExportHd`, `watermark`, `canUsePremiumFrames`, `maxRoomsPerMonth`).
+- Configurable free tier vs. pro tier feature gating.
+- Stripe webhooks for subscription lifecycles (trial, active, past-due, canceled).
 
 Exit criteria:
+- Paid features (HD export, watermark removal, premium frames) cleanly unlock upon subscription.
+- Free tier retains a complete, functional photo workflow.
 
-- Supported mobile browsers can complete a short video session without freezing or excessive memory use.
-
-## Milestone 7: Production Hardening
+## Milestone 7: Production Hardening & PWA
 
 Deliverables:
-
-- Reconnect and recovery handling.
-- Network diagnostics and TURN monitoring.
-- Accessibility audit.
-- Cross-browser device testing.
-- Security review and privacy audit.
-- Error monitoring configured without media payloads.
-- PWA install and offline frame catalog support.
+- WebRTC reconnection resilience and TURN server failover monitoring.
+- PWA manifest, service worker for frame assets, and install prompts.
+- Accessibility, mobile browser compatibility, and privacy audit.
 
 Exit criteria:
+- Stable, production-ready web experience on mobile iOS Safari, Android Chrome, and desktop browsers.
 
-- The application is stable for a controlled beta launch.
-
-## Future Milestone 8: Native Mobile Applications
-
-This milestone begins only after the web product has validated retention, paid conversion, and the core technical flow.
+## Milestone 8: Future Native Mobile Applications
 
 Deliverables:
-
-- Shared API and authentication contract for native clients.
-- iOS application with native camera and export integrations.
-- Android application with native camera and export integrations.
-- Push notifications for invitations and room readiness.
-- Offline frame editing where platform storage permits.
-- App Store and Play Store release processes.
-
-Exit criteria:
-
-- Native clients provide the same core booth flow as the web application.
-- Native clients preserve the no-server-media-storage privacy promise.
+- Shared API contracts and signaling endpoints for native clients.
+- Native iOS & Android companion apps using native camera APIs while keeping the same privacy model.

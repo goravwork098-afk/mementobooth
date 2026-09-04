@@ -1,69 +1,30 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+import { useState } from "react";
+import { ArrowRight, Camera, Check, ChevronDown, Heart, LockKeyhole, MapPin, Menu, Sparkles, X } from "lucide-react";
+
+const themes = ["rose", "lavender", "gold"];
+
+function BoothPreview({ tone = "rose" }: { tone?: string }) {
+  return <div className={`booth-card tone-${tone}`}><div className="booth-topline"><span>NYC</span><Heart size={13} fill="currentColor" /><span>LONDON</span></div><div className="booth-screens"><div className="person-screen person-one"><span>you</span></div><div className="person-screen person-two"><span>your person</span></div></div><div className="countdown"><span>3</span><span>2</span><span>1</span><strong><Camera size={19} /></strong></div><div className="booth-strip"><div className="strip-shot shot-one" /><div className="strip-shot shot-two" /><div className="strip-shot shot-three" /><small>captured together</small></div><div className="booth-caption"><Sparkles size={13} /> saved to your memories</div></div>;
+}
+
+export default function LandingPage() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeTheme, setActiveTheme] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const copyInvite = async () => { await navigator.clipboard?.writeText("https://couplephotobooth.com/join/LOVE-42"); setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
+  return <main className="site-shell">
+    <nav className="nav-wrap"><a className="brand" href="#top"><span className="brand-mark"><Heart size={17} fill="currentColor" /></span><span>Couple Photobooth</span></a><div className={`nav-links ${menuOpen ? "nav-open" : ""}`}><a href="#how">How it works</a><a href="#themes">Themes</a><a href="#privacy">Privacy</a><a href="#faq">FAQ</a></div><div className="nav-actions"><a className="text-link" href="/login">Sign in</a><a className="button button-small" href="/signup">Create booth <ArrowRight size={15} /></a></div><button className="icon-button menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Close menu" : "Open menu"}>{menuOpen ? <X /> : <Menu />}</button></nav>
+    <section id="top" className="hero section-pad"><div className="hero-copy reveal-up"><p className="eyebrow"><Heart size={14} fill="currentColor" /> a little date night, no matter the distance</p><h1>Different places.<br /><em>One perfect moment.</em></h1><p className="hero-lede">A virtual photobooth for the two of you. Pose together, count down together, and leave with a little memory worth keeping.</p><div className="hero-actions"><a className="button" href="#join">Create our booth <ArrowRight size={17} /></a><a className="button button-quiet" href="#how">See how it works <ChevronDown size={16} /></a></div><p className="microcopy"><LockKeyhole size={13} /> private room link <span /> works in your browser <span /> no media stored by us</p></div><div className="hero-art reveal-in"><div className="float-note note-left">made for<br /><strong>your person</strong> <Heart size={13} fill="currentColor" /></div><div className="float-note note-right">04.09.26<br /><strong>forever & always</strong></div><BoothPreview tone={themes[activeTheme]} /></div></section>
+    <section className="ticker"><span>two cameras</span><Heart size={13} fill="currentColor" /><span>one countdown</span><Heart size={13} fill="currentColor" /><span>a keepsake for later</span><Heart size={13} fill="currentColor" /></section>
+    <section id="how" className="section-pad story-section"><div className="section-intro"><p className="eyebrow">the sweet little ritual</p><h2>Not another screenshot<br /><em>a memory worth keeping.</em></h2></div><div className="compare-grid"><div className="compare-card muted-card"><div className="fake-call"><div className="fake-person" /><div className="fake-person small" /><span className="call-time">00:42:18</span></div><p className="compare-label negative">just another screenshot</p><p>Lovely, but lost in a camera roll full of everything else.</p></div><div className="compare-card keepsake-card"><BoothPreview /><p className="compare-label positive">captured together <Heart size={14} fill="currentColor" /></p><p>A tiny date, a silly pose, and proof you showed up for each other.</p></div></div></section>
+    <section id="themes" className="section-pad steps-section"><div className="section-intro centered"><p className="eyebrow">three easy steps</p><h2>Make a little magic<br /><em>from wherever you are.</em></h2></div><div className="steps-grid"><article><span>01</span><Camera /><h3>Start a private booth</h3><p>Create an account, make a room, and send the invite to your person.</p><button className="mini-action" onClick={copyInvite}>{copied ? <><Check size={14} /> link copied</> : "Copy a sample invite link"}</button></article><article><span>02</span><div className="mini-count"><b>3</b><b>2</b><b>1</b><strong><Camera size={16} /></strong></div><h3>Pose. Count down. Smile.</h3><p>Your cameras flash at the same time, even when your clocks do not.</p></article><article><span>03</span><Sparkles /><h3>Keep your favorite frame</h3><p>Choose a theme, add your date, and download the finished strip.</p></article></div></section>
+    <section id="privacy" className="privacy-band section-pad"><div className="privacy-lock"><LockKeyhole size={28} /></div><div><p className="eyebrow">made for personal moments</p><h2>Your memory stays yours.</h2><p>Rooms are private and temporary. Photos are composed in your browser, then downloaded by you or saved directly to your own Drive. We do not build a gallery of your life.</p></div><div className="privacy-points"><span><Check size={15} /> private invite links</span><span><Check size={15} /> browser-side composition</span><span><Check size={15} /> close your room anytime</span></div></section>
+    <section className="section-pad distance-section"><div className="distance-copy"><p className="eyebrow">love, in two places</p><h2>For late-night calls,<br /><em>birthdays, and in-betweens.</em></h2><p>Some of the best dates do not need a reservation or a plane ticket. Just the two of you, a terrible pose, and a reason to press capture.</p><a className="text-link underlined" href="#join">Make a keepsake <ArrowRight size={15} /></a></div><div className="map-art"><div className="map-line" /><div className="map-city city-a"><MapPin size={18} fill="currentColor" /><b>New York</b></div><div className="map-city city-b"><MapPin size={18} fill="currentColor" /><b>London</b></div><span className="map-heart"><Heart size={18} fill="currentColor" /></span><span className="map-star star-one">✦</span><span className="map-star star-two">✦</span></div></section>
+    <section className="customizer section-pad"><div className="section-intro"><p className="eyebrow">make it yours</p><h2>Pick a mood.<br /><em>Keep the moment.</em></h2></div><div className="customizer-grid"><div className="theme-picker">{themes.map((theme, index) => <button key={theme} className={activeTheme === index ? "theme-option selected" : "theme-option"} onClick={() => setActiveTheme(index)}><span className={`swatch swatch-${theme}`} /><span><strong>{theme === "rose" ? "Soft romance" : theme === "lavender" ? "Lavender dream" : "Golden hour"}</strong><small>{theme === "rose" ? "warm blush + little hearts" : theme === "lavender" ? "cool lilac + silver stars" : "peach light + date stamps"}</small></span>{activeTheme === index && <Check size={16} />}</button>)}</div><div className="customizer-preview"><BoothPreview tone={themes[activeTheme]} /></div></div></section>
+    <section id="join" className="final-cta section-pad"><p className="eyebrow"><Heart size={14} fill="currentColor" /> your next little memory is waiting</p><h2>Turn your next call<br /><em>into a keepsake.</em></h2><p>No download to start. Just you, them, and a private room for two.</p><a className="button" href="#top">Create our booth <ArrowRight size={17} /></a><div className="cta-sparkles">✦ <Heart size={16} fill="currentColor" /> ✦</div></section>
+    <footer id="faq"><a className="brand" href="#top"><span className="brand-mark"><Heart size={15} fill="currentColor" /></span><span>Couple Photobooth</span></a><span>Made for couples everywhere.</span><span>© 2026</span></footer>
+    <style>{`@media (min-width:1001px){.hero{grid-template-columns:minmax(0,.88fr) minmax(430px,1.12fr);gap:40px}.hero h1{font-size:clamp(50px,5.25vw,74px)}.hero-art{justify-items:end;padding-right:10px}.hero-art .booth-card{width:360px}}@media (min-width:801px) and (max-width:1100px){.hero{gap:24px}.hero h1{font-size:clamp(48px,5.6vw,64px)}.hero-art .booth-card{width:330px}}@media (max-width:800px){.hero h1{font-size:clamp(44px,13vw,64px)}.hero-art .booth-card{width:min(360px,94vw)}.microcopy{flex-wrap:wrap}}@media (max-width:430px){.hero h1{font-size:clamp(40px,12.7vw,53px)}.hero-art .booth-card{width:calc(100vw - 42px)}}`}</style>
+  </main>;
 }

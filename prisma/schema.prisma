@@ -1,0 +1,263 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --------------------------------------------------------
+// Enums
+// --------------------------------------------------------
+
+enum RoomStatus {
+  WAITING      // Waiting for second partner to join
+  READY        // Both participants joined and granted camera permissions
+  ACTIVE       // In live photobooth capture session
+  COMPOSING    // Photos taken, currently composing/editing frame
+  COMPLETED    // Session finished and downloaded
+  EXPIRED      // Inactivity timeout or max duration reached
+}
+
+enum ParticipantRole {
+  HOST
+  GUEST
+}
+
+enum FrameCategory {
+  CLASSIC
+  ROMANTIC
+  VINTAGE
+  SEASONAL
+  CUSTOM
+}
+
+enum PlanTier {
+  FREE
+  PRO_MONTHLY
+  PRO_ANNUAL
+}
+
+enum SubscriptionStatus {
+  FREE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+// --------------------------------------------------------
+// Authentication & User Models (NextAuth / Auth.js compatible)
+// --------------------------------------------------------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth / OAuth accounts & sessions
+  accounts      Account[]
+  sessions      Session[]
+
+  // Photobooth relations
+  hostedRooms   Room[]            @relation("RoomHost")
+  participations RoomParticipant[]
+  subscription  Subscription?
+  usageRecords  UsageRecord[]
+  createdFrames Frame[]           @relation("UserCreatedFrames")
+
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --------------------------------------------------------
+// Photobooth Room & Participant Models
+// --------------------------------------------------------
+
+model Room {
+  id               String      @id @default(cuid())
+  code             String      @unique // Human-friendly display code e.g. "LOVE-42"
+  token            String      @unique @default(uuid()) // Cryptographic secret for invite URLs
+  status           RoomStatus  @default(WAITING)
+  
+  // Host / Owner relationship
+  hostId           String
+  host             User        @relation("RoomHost", fields: [hostId], references: [id], onDelete: Cascade)
+  
+  // Frame selected for this session
+  selectedFrameId  String?
+  selectedFrame    Frame?      @relation("RoomFrame", fields: [selectedFrameId], references: [id], onDelete: SetNull)
+
+  // Timing & Lifecycle
+  maxDurationSec   Int         @default(1800) // 30 minutes room TTL
+  expiresAt        DateTime    // Indexed for cleanup queries
+  completedAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relations
+  participants     RoomParticipant[]
+  lifecycleEvents  RoomEvent[]
+
+  @@index([code])
+  @@index([token])
+  @@index([hostId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model RoomParticipant {
+  id             String          @id @default(cuid())
+  roomId         String
+  room           Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           ParticipantRole @default(GUEST)
+  
+  // Signaling & Device readiness
+  peerId         String?         // Ephemeral WebRTC peer ID
+  cameraGranted  Boolean         @default(false)
+  micGranted     Boolean         @default(false)
+  isReady        Boolean         @default(false)
+  
+  joinedAt       DateTime        @default(now())
+  lastPingAt     DateTime        @default(now()) // Heartbeat for disconnection detection
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+}
+
+model RoomEvent {
+  id        String   @id @default(cuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  eventType String   // "JOIN", "READY", "COUNTDOWN_START", "CAPTURE", "DOWNLOAD", "EXPIRE"
+  metadata  String?  // JSON metadata (strictly non-media, e.g. latency, frameId)
+  createdAt DateTime @default(now())
+
+  @@index([roomId, eventType])
+}
+
+// --------------------------------------------------------
+// Frame Template Catalog (Preset & Custom)
+// --------------------------------------------------------
+
+model Frame {
+  id          String        @id @default(cuid())
+  slug        String        @unique // e.g. "classic-4cut", "polaroid-duo", "romantic-hearts"
+  name        String
+  description String?
+  previewUrl  String?
+  category    FrameCategory @default(CLASSIC)
+  isPremium   Boolean       @default(false)
+  isPublic    Boolean       @default(true)
+  slotCount   Int           @default(2) // Number of photo slots
+  aspectRatio String        @default("2:3") // "2:3", "4:6", "1:1"
+  
+  // JSON definition of canvas dimensions, slots (x,y,w,h,rotation), decorations, borders
+  configJson  String        @db.Text
+
+  // Custom frame creator (null for official presets)
+  createdById String?
+  creator     User?         @relation("UserCreatedFrames", fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Rooms that selected this frame
+  rooms       Room[]        @relation("RoomFrame")
+
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([category])
+  @@index([isPremium])
+  @@index([isPublic])
+  @@index([createdById])
+}
+
+// --------------------------------------------------------
+// Usage & Entitlement Quotas
+// --------------------------------------------------------
+
+model UsageRecord {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  yearMonth         String   // Format "YYYY-MM" e.g. "2026-09"
+  roomsCreatedCount Int      @default(0)
+  capturesCount     Int      @default(0)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, yearMonth])
+  @@index([userId])
+}
+
+// --------------------------------------------------------
+// Subscription & Stripe Billing (Configured for later milestone)
+// --------------------------------------------------------
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planTier             PlanTier           @default(FREE)
+  status               SubscriptionStatus @default(FREE)
+  
+  // Stripe integration references
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  stripePriceId        String?
+  
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+}

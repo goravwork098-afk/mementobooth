@@ -1,0 +1,6 @@
+"use client";
+import Link from "next/link";
+import { ArrowRight, Heart, LockKeyhole, Mail } from "lucide-react";
+export default function LoginPage() {
+  return <main className="auth-page"><div className="auth-orbit orbit-one" /><div className="auth-orbit orbit-two" /><div className="auth-shell"><Link href="/" className="brand auth-brand"><span className="brand-mark"><Heart size={17} fill="currentColor" /></span>Memento Booth</Link><section className="auth-card"><div className="auth-kicker"><LockKeyhole size={14} /> welcome back</div><h1>Come back to<br /><em>your little moments.</em></h1><p className="auth-intro">Sign in to create a private booth and keep making memories together.</p><form className="auth-form" onSubmit={(event) => event.preventDefault()}><label>Email address<input type="email" placeholder="you@example.com" /></label><button className="button auth-submit" type="submit">Continue with email <ArrowRight size={16} /></button></form><div className="auth-divider"><span>or</span></div><button className="social-button" type="button"><span className="google-mark">G</span> Continue with Google</button><p className="auth-foot">New here? <Link href="/signup">Create your account <ArrowRight size={13} /></Link></p></section><p className="auth-note"><Mail size={13} /> We&apos;ll send a secure magic link. No password to remember.</p></div></main>;
+}
