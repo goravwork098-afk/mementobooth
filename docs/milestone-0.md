@@ -85,3 +85,10 @@
 - [x] Run `bun run build` to ensure TypeScript compilation and zero Tailwind errors (Compiled in 8.1s).
 - [x] Run `bun run lint` to verify code hygiene (0 errors, 0 warnings).
 
+### Current verification (2026-09-05)
+
+- `bun install --frozen-lockfile` completed successfully with the existing `bun.lock`.
+- `bunx prisma validate` passed and `bunx prisma generate` regenerated Prisma Client v6.4.1.
+- `bun run build` passed with Next.js 16.3.4 and prerendered `/`, `/dashboard`, `/login`, and `/signup`.
+- `bunx eslint src` passed with zero reported errors or warnings.
+- The login, signup, and dashboard routes are UI shells only; real authentication and room behavior remain intentionally scoped to Milestone 1.

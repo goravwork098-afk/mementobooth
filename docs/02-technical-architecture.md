@@ -30,7 +30,7 @@ Native iOS and Android clients can later use the same authentication, room, plan
 
 ### Platform Services
 
-- Supabase Auth for passwordless and social login
+- Auth.js with Prisma adapter for passwordless and social login
 - PostgreSQL for users, plans, rooms, frames, and usage counters
 - Stripe for subscriptions and billing events
 - WebSocket signaling service using Cloudflare Durable Objects
