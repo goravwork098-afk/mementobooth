@@ -14,7 +14,8 @@ function CustomPrismaAdapter(p: typeof prisma) {
   if (originalDeleteSession) {
     adapter.deleteSession = async (sessionToken) => {
       try {
-        return await originalDeleteSession(sessionToken);
+        const result = await originalDeleteSession(sessionToken);
+        return result ?? null;
       } catch (error: any) {
         if (error?.code === "P2025") {
           return null;

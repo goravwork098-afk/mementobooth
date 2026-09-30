@@ -143,6 +143,10 @@ model Room {
   selectedFrameId  String?
   selectedFrame    Frame?      @relation("RoomFrame", fields: [selectedFrameId], references: [id], onDelete: SetNull)
 
+  // Countdown sync (server-authoritative)
+  countdownStartedAt DateTime?  // When host clicked "Start Countdown"
+  countdownDuration  Int?       // 3, 5, or 10 seconds
+
   // Timing & Lifecycle
   maxDurationSec   Int         @default(1800) // 30 minutes room TTL
   expiresAt        DateTime    // Indexed for cleanup queries

@@ -22,6 +22,9 @@ export default async function RoomPage({
         include: { user: { select: { name: true, email: true } } },
       },
       host: { select: { name: true } },
+      selectedFrame: {
+        select: { id: true, name: true, slug: true, configJson: true },
+      },
     },
   });
 
@@ -111,6 +114,19 @@ export default async function RoomPage({
         status: room.status,
         expiresAt: room.expiresAt.toISOString(),
         selectedFrameId: room.selectedFrameId,
+        selectedFrame: room.selectedFrame
+          ? {
+              id: room.selectedFrame.id,
+              name: room.selectedFrame.name,
+              slug: room.selectedFrame.slug,
+              configJson: room.selectedFrame.configJson,
+            }
+          : null,
+        countdownStartedAt: room.countdownStartedAt?.toISOString() ?? null,
+        countdownDuration: room.countdownDuration ?? null,
+        countdownRemaining: null,
+        serverTime: new Date().toISOString(),
+        photosReady: {},
         participants: room.participants.map((p) => ({
           id: p.id,
           userId: p.userId,
@@ -119,7 +135,6 @@ export default async function RoomPage({
           isReady: p.isReady,
           cameraGranted: p.cameraGranted,
           micGranted: p.micGranted,
-          streamActive: p.streamActive,
         })),
       }}
       currentUserId={userId}
