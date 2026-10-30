@@ -2,6 +2,7 @@
 
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { clearRoomPhotos } from "@/lib/photo-relay";
 
 /**
  * Start the countdown for a room (host-only).
@@ -10,7 +11,8 @@ import prisma from "@/lib/prisma";
  */
 export async function startCountdownAction(
   roomId: string,
-  duration: 3 | 5 | 10 = 3
+  duration: 3 | 5 | 10 = 3,
+  slotIndex: number = 0
 ) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
@@ -51,7 +53,11 @@ export async function startCountdownAction(
       data: {
         roomId,
         eventType: "COUNTDOWN_START",
-        metadata: JSON.stringify({ duration, startedBy: session.user.id }),
+        metadata: JSON.stringify({
+          duration,
+          slotIndex,
+          startedBy: session.user.id,
+        }),
       },
     }),
   ]);
@@ -62,7 +68,7 @@ export async function startCountdownAction(
  * The actual photo data stays client-side and goes through the
  * ephemeral in-memory relay only — never touches the database.
  */
-export async function recordCaptureEvent(roomId: string) {
+export async function recordCaptureEvent(roomId: string, slotIndex: number = 0) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
@@ -72,8 +78,9 @@ export async function recordCaptureEvent(roomId: string) {
       eventType: "PHOTO_CAPTURED",
       metadata: JSON.stringify({
         userId: session.user.id,
+        slotIndex,
         timestamp: new Date().toISOString(),
-        // NO photo data stored — privacy promise upheld
+        // Strictly NO photo or biometric data stored in DB
       }),
     },
   });
@@ -112,11 +119,14 @@ export async function completeRoomAction(roomId: string) {
 }
 
 /**
- * Reset countdown (for retake).
+ * Reset countdown and clear in-memory photos (for retake).
  */
 export async function resetCountdownAction(roomId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
+
+  // Wipe all cached photos from the ephemeral in-memory relay
+  clearRoomPhotos(roomId);
 
   await prisma.$transaction([
     prisma.room.update({
@@ -131,6 +141,13 @@ export async function resetCountdownAction(roomId: string) {
     prisma.roomParticipant.updateMany({
       where: { roomId },
       data: { isReady: false },
+    }),
+    prisma.roomEvent.create({
+      data: {
+        roomId,
+        eventType: "RETAKE_TRIGGERED",
+        metadata: JSON.stringify({ triggeredBy: session.user.id }),
+      },
     }),
   ]);
 }

@@ -2,7 +2,6 @@
 
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 
 export async function toggleReadyAction(roomId: string) {
   const session = await auth();

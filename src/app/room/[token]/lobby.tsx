@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   Copy,
   Check,
@@ -10,7 +11,6 @@ import {
   Camera,
   X,
   Play,
-  RotateCcw,
   QrCode as QrIcon,
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -96,6 +96,7 @@ export default function Lobby({
   currentUserId,
   isHost,
 }: LobbyProps) {
+  const router = useRouter();
   // ── State ──
   const [roomState, setRoomState] = useState<RoomState>({
     ...initialRoomState,
@@ -123,14 +124,37 @@ export default function Lobby({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Photos
-  const [myPhoto, setMyPhoto] = useState<string | null>(null);
-  const [partnerPhoto, setPartnerPhoto] = useState<string | null>(null);
+  // Photos & Multi-Slot State
+  const [myPhotos, setMyPhotos] = useState<string[]>([]);
+  const [partnerPhotos, setPartnerPhotos] = useState<string[]>([]);
+  const [currentSlotIndex, setCurrentSlotIndex] = useState<number>(0);
   const [frameConfig, setFrameConfig] = useState<FrameConfig | null>(null);
 
-  // Refs for intervals
+  // Refs for intervals & clock calibration
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const clockOffsetRef = useRef<number>(0);
+
+  // Dynamic slot count from frame config or selected frame
+  const totalSlots =
+    frameConfig?.slots?.length ??
+    (roomState.selectedFrame?.configJson
+      ? (() => {
+          try {
+            return (JSON.parse(roomState.selectedFrame.configJson) as FrameConfig)
+              .slots.length;
+          } catch {
+            return 2;
+          }
+        })()
+      : 2);
+
+  /* ── Teardown camera when composing ── */
+  useEffect(() => {
+    if (phase === "composing" && localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+    }
+  }, [phase, localStream]);
 
   /* ── Generate QR Code ── */
   useEffect(() => {
@@ -191,6 +215,158 @@ export default function Lobby({
     canvasRef.current = document.createElement("canvas");
   }, []);
 
+  /* ── Fetch partner's photos ── */
+  const fetchAllPartnerPhotos = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/room/${token}/photo`);
+      const data = await res.json();
+      if (data.partnerPhotos) {
+        const photosList: string[] = [];
+        for (let i = 0; i < totalSlots; i++) {
+          if (data.partnerPhotos[i]) {
+            photosList[i] = data.partnerPhotos[i];
+          }
+        }
+        setPartnerPhotos(photosList);
+        if (data.allReady) {
+          setPhase("composing");
+          try {
+            await transitionToComposingAction(roomId);
+          } catch {
+            /* ignore */
+          }
+          return true;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }, [token, roomId, totalSlots]);
+
+  /* ── Poll for partner's photos ── */
+  const pollForPartnerPhotos = useCallback(() => {
+    const interval = setInterval(async () => {
+      const finished = await fetchAllPartnerPhotos();
+      if (finished) clearInterval(interval);
+    }, 1500);
+
+    // Timeout after 2 minutes
+    setTimeout(() => clearInterval(interval), 120_000);
+  }, [fetchAllPartnerPhotos]);
+
+  /* ── Capture from camera ── */
+  const doCapture = useCallback(async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Flash visual effect
+    setPhase("capturing");
+    await new Promise((r) => setTimeout(r, 200));
+
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+
+    setMyPhotos((prev) => {
+      const next = [...prev];
+      next[currentSlotIndex] = dataUrl;
+      return next;
+    });
+
+    try {
+      await recordCaptureEvent(roomId, currentSlotIndex);
+    } catch {
+      /* ignore */
+    }
+
+    setPhase("uploading");
+    try {
+      const res = await fetch(`/api/room/${token}/photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataUrl,
+          slotIndex: currentSlotIndex,
+          totalSlots,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.allSlotsCompleted) {
+        await fetchAllPartnerPhotos();
+      } else if (currentSlotIndex + 1 < totalSlots) {
+        // Advance to next pose slot
+        setCurrentSlotIndex((idx) => idx + 1);
+        setPhase("lobby");
+        // If host, auto-start countdown for next pose after 2.5s breather
+        if (isHost) {
+          setTimeout(async () => {
+            try {
+              await startCountdownAction(
+                roomId,
+                selectedDuration,
+                currentSlotIndex + 1
+              );
+            } catch {
+              /* ignore */
+            }
+          }, 2500);
+        }
+      } else {
+        setPhase("waiting");
+        pollForPartnerPhotos();
+      }
+    } catch (err) {
+      console.error("Upload failed:", err);
+      setPhase("lobby");
+    }
+  }, [
+    roomId,
+    token,
+    currentSlotIndex,
+    totalSlots,
+    isHost,
+    selectedDuration,
+    fetchAllPartnerPhotos,
+    pollForPartnerPhotos,
+  ]);
+
+  /* ── Calibrated local countdown display ── */
+  const startLocalCountdown = useCallback(
+    (serverStartTimeMs: number, durationSec: number) => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+
+      // Calibrate countdown against server clock offset
+      const targetLocalEndTime =
+        serverStartTimeMs - clockOffsetRef.current + durationSec * 1000;
+
+      const tick = () => {
+        const remaining = Math.max(
+          0,
+          (targetLocalEndTime - Date.now()) / 1000
+        );
+        const displayNum = Math.ceil(remaining);
+        setCountdownDisplay(displayNum);
+
+        if (remaining <= 0) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          setPhase("capturing");
+          doCapture();
+        }
+      };
+
+      tick();
+      countdownRef.current = setInterval(tick, 100);
+    },
+    [doCapture]
+  );
+
   /* ── Poll for room updates ── */
   useEffect(() => {
     const poll = async () => {
@@ -200,11 +376,19 @@ export default function Lobby({
         const data: RoomState = await res.json();
         setRoomState(data);
 
+        // Calibrate clock offset on each poll
+        if (data.serverTime) {
+          clockOffsetRef.current =
+            new Date(data.serverTime).getTime() - Date.now();
+        }
+
         // Parse frame config if available
         if (data.selectedFrame?.configJson) {
           try {
             setFrameConfig(JSON.parse(data.selectedFrame.configJson));
-          } catch { /* ignore parse errors */ }
+          } catch {
+            /* ignore parse errors */
+          }
         }
 
         // Auto-redirect on expiry / completion
@@ -212,7 +396,19 @@ export default function Lobby({
           data.status === "EXPIRED" ||
           (data.status === "COMPLETED" && phase === "done")
         ) {
-          window.location.href = "/dashboard";
+          router.push("/dashboard");
+          return;
+        }
+
+        // Un-trap guest when retake is triggered
+        if (
+          data.status === "READY" &&
+          (phase === "composing" || phase === "done")
+        ) {
+          setPhase("lobby");
+          setMyPhotos([]);
+          setPartnerPhotos([]);
+          setCurrentSlotIndex(0);
           return;
         }
 
@@ -230,7 +426,7 @@ export default function Lobby({
               data.countdownDuration
             );
           } else if (remaining <= 0) {
-            // Countdown already finished — capture
+            // Countdown already reached zero — trigger capture
             setPhase("capturing");
             doCapture();
           }
@@ -240,7 +436,6 @@ export default function Lobby({
       }
     };
 
-    // Poll every 1.5s during lobby, 0.8s during countdown
     const interval = phase === "countdown" ? 800 : 1500;
     pollRef.current = setInterval(poll, interval);
     poll(); // immediate first poll
@@ -248,110 +443,7 @@ export default function Lobby({
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [token, phase]);
-
-  /* ── Local countdown display ── */
-  const startLocalCountdown = useCallback(
-    (startTimeMs: number, durationSec: number) => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-
-      const endTime = startTimeMs + durationSec * 1000;
-
-      const tick = () => {
-        const remaining = Math.max(0, (endTime - Date.now()) / 1000);
-        const displayNum = Math.ceil(remaining);
-        setCountdownDisplay(displayNum);
-
-        if (remaining <= 0) {
-          if (countdownRef.current) clearInterval(countdownRef.current);
-          setPhase("capturing");
-          doCapture();
-        }
-      };
-
-      tick();
-      countdownRef.current = setInterval(tick, 100);
-    },
-    []
-  );
-
-  /* ── Capture from camera ── */
-  const doCapture = useCallback(async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    // Flash effect
-    setPhase("capturing");
-
-    // Small delay for the "flash" visual
-    await new Promise((r) => setTimeout(r, 200));
-
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    setMyPhoto(dataUrl);
-
-    // Record event (no media stored in DB)
-    try {
-      await recordCaptureEvent(roomId);
-    } catch { /* ignore */ }
-
-    // Upload to ephemeral relay
-    setPhase("uploading");
-    try {
-      const res = await fetch(`/api/room/${token}/photo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl }),
-      });
-      const data = await res.json();
-
-      if (data.bothReady) {
-        // Partner already uploaded — fetch their photo
-        await fetchPartnerPhoto();
-      } else {
-        // Wait for partner
-        setPhase("waiting");
-        pollForPartnerPhoto();
-      }
-    } catch (err) {
-      console.error("Upload failed:", err);
-      setPhase("lobby");
-    }
-  }, [roomId, token]);
-
-  /* ── Fetch partner's photo ── */
-  const fetchPartnerPhoto = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/room/${token}/photo`);
-      const data = await res.json();
-      if (data.partnerPhoto) {
-        setPartnerPhoto(data.partnerPhoto);
-        setPhase("composing");
-        try {
-          await transitionToComposingAction(roomId);
-        } catch { /* ignore */ }
-        return true;
-      }
-    } catch { /* ignore */ }
-    return false;
-  }, [token, roomId]);
-
-  /* ── Poll for partner's photo ── */
-  const pollForPartnerPhoto = useCallback(() => {
-    const interval = setInterval(async () => {
-      const found = await fetchPartnerPhoto();
-      if (found) clearInterval(interval);
-    }, 1500);
-
-    // Timeout after 2 minutes
-    setTimeout(() => clearInterval(interval), 120_000);
-  }, [fetchPartnerPhoto]);
+  }, [token, phase, router, startLocalCountdown, doCapture]);
 
   /* ── Handle "Start Countdown" ── */
   const handleStartCountdown = async () => {
@@ -360,8 +452,10 @@ export default function Lobby({
       await startCountdownAction(roomId, selectedDuration);
       setPhase("countdown");
       startLocalCountdown(Date.now(), selectedDuration);
-    } catch (err: any) {
-      alert(err?.message ?? "Could not start countdown");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Could not start countdown";
+      alert(message);
     } finally {
       setPendingAction(false);
     }
@@ -397,7 +491,7 @@ export default function Lobby({
     if (!confirm("Are you sure you want to leave this booth?")) return;
     setPendingAction(true);
     await leaveRoomAction(roomId);
-    window.location.href = "/dashboard";
+    router.push("/dashboard");
   };
 
   /* ── Close room ── */
@@ -405,18 +499,21 @@ export default function Lobby({
     if (!confirm("Close this booth for everyone?")) return;
     setPendingAction(true);
     await closeRoomAction(roomId);
-    window.location.href = "/dashboard";
+    router.push("/dashboard");
   };
 
   /* ── Retake ── */
   const handleRetake = async () => {
-    setMyPhoto(null);
-    setPartnerPhoto(null);
+    setMyPhotos([]);
+    setPartnerPhotos([]);
+    setCurrentSlotIndex(0);
     setPhase("lobby");
     setCountdownDisplay(0);
     try {
       await resetCountdownAction(roomId);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   /* ── Derived ── */
@@ -442,14 +539,19 @@ export default function Lobby({
   /* ──────────────────────────────────────────────────────── */
   /*  COMPOSING PHASE — show canvas composer                  */
   /* ──────────────────────────────────────────────────────── */
-  if (phase === "composing" && myPhoto && partnerPhoto && frameConfig) {
+  if (
+    phase === "composing" &&
+    myPhotos.length > 0 &&
+    partnerPhotos.length > 0 &&
+    frameConfig
+  ) {
     return (
       <main className="lobby-page">
         <Composer
           frameConfig={frameConfig}
           frameName={roomState.selectedFrame?.name ?? "Memento"}
-          myPhoto={myPhoto}
-          partnerPhoto={partnerPhoto}
+          myPhotos={myPhotos}
+          partnerPhotos={partnerPhotos}
           myRole={isHost ? "HOST" : "GUEST"}
           roomCode={code}
           onRetake={handleRetake}
@@ -528,6 +630,7 @@ export default function Lobby({
             {showQr && qrCodeUrl && (
               <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <div style={{ background: "#ffffff", padding: "12px", borderRadius: "16px", boxShadow: "0 10px 25px rgba(61,19,38,0.08)", border: "1px solid #efe8ec" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={qrCodeUrl} alt="Room QR Code" width={160} height={160} style={{ display: "block", borderRadius: "8px" }} />
                 </div>
                 <small style={{ marginTop: "8px", color: "var(--muted)", fontSize: "12px" }}>Scan with camera to join immediately</small>
@@ -628,6 +731,9 @@ export default function Lobby({
               {/* Countdown Overlay */}
               {phase === "countdown" && countdownDisplay > 0 && (
                 <div className="countdown-overlay">
+                  <span className="pose-badge">
+                    Pose {currentSlotIndex + 1} of {totalSlots}
+                  </span>
                   <div className="countdown-number">
                     {countdownDisplay}
                   </div>
@@ -642,10 +748,13 @@ export default function Lobby({
               {/* Uploading indicator */}
               {(phase === "uploading" || phase === "waiting") && (
                 <div className="countdown-overlay">
+                  <span className="pose-badge">
+                    Pose {currentSlotIndex + 1} of {totalSlots}
+                  </span>
                   <Loader2 size={32} className="spin" />
                   <span className="capture-status-text">
                     {phase === "uploading"
-                      ? "Sending photo…"
+                      ? `Sending pose ${currentSlotIndex + 1}…`
                       : "Waiting for your person…"}
                   </span>
                 </div>

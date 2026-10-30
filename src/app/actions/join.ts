@@ -19,25 +19,36 @@ export async function joinRoomAction(token: string) {
 
   if (!room) throw new Error("Room not found.");
   if (room.expiresAt <= new Date()) throw new Error("This room has expired.");
-  if (room.status !== "WAITING") throw new Error("This room is no longer accepting guests.");
 
-  // Already a participant?
+  // 1. Host re-entry check
+  if (room.hostId === userId) {
+    redirect(`/room/${token}`);
+  }
+
+  // 2. Already a participant re-entry check (must precede status check so refreshing in READY rooms works)
   const existing = room.participants.find((p) => p.userId === userId);
   if (existing) {
     redirect(`/room/${token}`);
   }
 
-  // Room full? (max 2 participants)
+  // 3. New participants require WAITING status
+  if (room.status !== "WAITING") {
+    throw new Error("This room is no longer accepting new guests.");
+  }
+
+  // 4. Capacity check
   if (room.participants.length >= 2) {
     throw new Error("This room is already full.");
   }
 
-  // Can't join your own room as guest
-  if (room.hostId === userId) {
-    redirect(`/room/${token}`);
-  }
-
   await prisma.$transaction(async (tx) => {
+    const currentCount = await tx.roomParticipant.count({
+      where: { roomId: room.id },
+    });
+    if (currentCount >= 2) {
+      throw new Error("This room is already full.");
+    }
+
     await tx.roomParticipant.create({
       data: {
         roomId: room.id,

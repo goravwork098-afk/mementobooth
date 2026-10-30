@@ -165,6 +165,6 @@ export async function POST(request: Request) {
 }
 
 // Health check endpoint
-export async function GET(request: Request) {
+export async function GET() {
   return NextResponse.json({ status: "ok" });
 }

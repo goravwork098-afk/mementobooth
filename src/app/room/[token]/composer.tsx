@@ -2,13 +2,13 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Download, RotateCcw, Heart, Sparkles, Loader2 } from "lucide-react";
-import type { FrameConfig, PhotoSlot, FrameDecoration } from "@/types/frame";
+import type { FrameConfig } from "@/types/frame";
 
 interface ComposerProps {
   frameConfig: FrameConfig;
   frameName: string;
-  myPhoto: string;      // data URL from local capture
-  partnerPhoto: string;  // data URL from relay
+  myPhotos: string[] | string;      // data URLs for each slot
+  partnerPhotos: string[] | string; // partner data URLs for each slot
   myRole: "HOST" | "GUEST";
   roomCode: string;
   onRetake: () => void;
@@ -18,8 +18,8 @@ interface ComposerProps {
 export default function Composer({
   frameConfig,
   frameName,
-  myPhoto,
-  partnerPhoto,
+  myPhotos,
+  partnerPhotos,
   myRole,
   roomCode,
   onRetake,
@@ -60,15 +60,19 @@ export default function Composer({
     const loadImage = (src: string): Promise<HTMLImageElement> =>
       new Promise((resolve, reject) => {
         const img = new Image();
-        img.crossOrigin = "anonymous";
         img.onload = () => resolve(img);
         img.onerror = reject;
         img.src = src;
       });
 
-    const [myImg, partnerImg] = await Promise.all([
-      loadImage(myPhoto),
-      loadImage(partnerPhoto),
+    const myPhotosArr = Array.isArray(myPhotos) ? myPhotos : [myPhotos];
+    const partnerPhotosArr = Array.isArray(partnerPhotos)
+      ? partnerPhotos
+      : [partnerPhotos];
+
+    const [loadedMyImgs, loadedPartnerImgs] = await Promise.all([
+      Promise.all(myPhotosArr.map((src) => loadImage(src))),
+      Promise.all(partnerPhotosArr.map((src) => loadImage(src))),
     ]);
 
     for (const slot of frameConfig.slots) {
@@ -96,6 +100,10 @@ export default function Composer({
       ctx.clip();
 
       // Determine which photo goes in this slot
+      const myImg = loadedMyImgs[slot.slotIndex] ?? loadedMyImgs[0];
+      const partnerImg =
+        loadedPartnerImgs[slot.slotIndex] ?? loadedPartnerImgs[0];
+
       let img: HTMLImageElement;
       if (slot.assignedUser === "HOST") {
         img = myRole === "HOST" ? myImg : partnerImg;
@@ -211,7 +219,7 @@ export default function Composer({
       "image/png",
       1.0
     );
-  }, [frameConfig, myPhoto, partnerPhoto, myRole, roomCode]);
+  }, [frameConfig, myPhotos, partnerPhotos, myRole, roomCode]);
 
   useEffect(() => {
     compose();

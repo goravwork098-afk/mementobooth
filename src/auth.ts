@@ -16,8 +16,13 @@ function CustomPrismaAdapter(p: typeof prisma) {
       try {
         const result = await originalDeleteSession(sessionToken);
         return result ?? null;
-      } catch (error: any) {
-        if (error?.code === "P2025") {
+      } catch (error: unknown) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code: string }).code === "P2025"
+        ) {
           return null;
         }
         throw error;
@@ -41,10 +46,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
     Credentials({
       name: "Email OTP",
-      credentials: { email: { label: "Email", type: "email" }, code: { label: "Code", type: "text" } },
+      credentials: {
+        email: { label: "Email", type: "email" },
+        code: { label: "Code", type: "text" },
+        name: { label: "Name", type: "text" },
+      },
       async authorize(credentials) {
         if (typeof credentials?.email !== "string" || typeof credentials?.code !== "string") return null;
-        const user = await consumeEmailOtp(credentials.email, credentials.code);
+        const name = typeof credentials?.name === "string" && credentials.name.trim() ? credentials.name.trim() : undefined;
+        const user = await consumeEmailOtp(credentials.email, credentials.code, name);
         return user ? { id: user.id, email: user.email, name: user.name } : null;
       },
     }),

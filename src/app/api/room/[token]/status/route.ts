@@ -21,7 +21,7 @@ export async function GET(
         include: { user: { select: { name: true, email: true } } },
       },
       selectedFrame: {
-        select: { id: true, name: true, slug: true, configJson: true },
+        select: { id: true, name: true, slug: true, configJson: true, slotCount: true },
       },
     },
   });
@@ -68,6 +68,7 @@ export async function GET(
     countdownStartedAt: room.countdownStartedAt?.toISOString() ?? null,
     countdownDuration: room.countdownDuration ?? null,
     countdownRemaining,
+    slotCount: room.selectedFrame?.slotCount ?? 2,
     serverTime: new Date().toISOString(),
     photosReady,
     participants: room.participants.map((p) => ({

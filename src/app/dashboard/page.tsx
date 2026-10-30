@@ -5,7 +5,6 @@ import {
   Camera,
   Heart,
   LogOut,
-  Plus,
   Sparkles,
   Users,
 } from "lucide-react";

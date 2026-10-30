@@ -4,16 +4,8 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { randomBytes } from "crypto";
-import { FREE_TIER_ENTITLEMENTS } from "@/types/entitlements";
-
-function generateRoomCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result = "";
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `LOVE-${result}`;
-}
+import { generateRoomCode } from "@/lib/room-code";
+import { FREE_TIER_ENTITLEMENTS, PRO_TIER_ENTITLEMENTS } from "@/types/entitlements";
 
 export async function createRoomAction() {
   const session = await auth();
@@ -33,20 +25,9 @@ export async function createRoomAction() {
     throw new Error("Unauthorized");
   }
 
-  // Check entitlement limits
   const yearMonth = `${new Date().getFullYear()}-${String(
     new Date().getMonth() + 1
   ).padStart(2, "0")}`;
-  const usage = await prisma.usageRecord.findUnique({
-    where: { userId_yearMonth: { userId, yearMonth } },
-  });
-  if (
-    usage &&
-    usage.roomsCreatedCount >= FREE_TIER_ENTITLEMENTS.maxRoomsPerMonth
-  ) {
-    // TODO: check if user has a pro subscription
-    throw new Error("Monthly room limit reached. Upgrade to create more booths.");
-  }
 
   // Generate unique room code with retry
   let code = generateRoomCode();
@@ -62,6 +43,30 @@ export async function createRoomAction() {
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min TTL
 
   const room = await prisma.$transaction(async (tx) => {
+    // 1. Check subscription status
+    const subscription = await tx.subscription.findUnique({
+      where: { userId },
+      select: { status: true },
+    });
+    const isPro =
+      subscription?.status === "ACTIVE" || subscription?.status === "TRIALING";
+    const maxRooms = isPro
+      ? PRO_TIER_ENTITLEMENTS.maxRoomsPerMonth
+      : FREE_TIER_ENTITLEMENTS.maxRoomsPerMonth;
+
+    // 2. Check usage record atomically inside transaction
+    const usage = await tx.usageRecord.findUnique({
+      where: { userId_yearMonth: { userId, yearMonth } },
+    });
+
+    if (usage && usage.roomsCreatedCount >= maxRooms) {
+      throw new Error(
+        isPro
+          ? "Monthly booth limit reached."
+          : "Monthly booth limit reached. Upgrade to Pro to create more booths."
+      );
+    }
+
     const newRoom = await tx.room.create({
       data: {
         code,
