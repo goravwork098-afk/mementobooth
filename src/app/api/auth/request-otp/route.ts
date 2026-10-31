@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { createEmailOtp } from "@/lib/otp";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { checkIpSecurity, recordSuspiciousFailure } from "@/lib/security";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -18,9 +19,24 @@ export async function POST(request: Request) {
   const forwarded = request.headers.get("x-forwarded-for");
   const ip = forwarded ? forwarded.split(",")[0].trim() : "127.0.0.1";
 
-  // 2. Database-backed rate limiting on client IP (max 5 OTP requests per 10 minutes)
+  // 2. Database-backed suspicious IP threat check
+  const ipSecurity = await checkIpSecurity(ip);
+  if (ipSecurity.blocked) {
+    return NextResponse.json(
+      {
+        error: `Access temporarily restricted due to suspicious activity. Try again in ${ipSecurity.retryAfterSec ?? 1800} seconds.`,
+      },
+      {
+        status: 403,
+        headers: { "Retry-After": String(ipSecurity.retryAfterSec ?? 1800) },
+      }
+    );
+  }
+
+  // 3. Database-backed rate limiting on client IP (max 5 OTP requests per 10 minutes)
   const ipLimit = await checkRateLimit(`otp:ip:${ip}`, 5, 600);
   if (!ipLimit.success) {
+    await recordSuspiciousFailure(ip, "EXCESSIVE_OTP_REQUESTS", 5, 30);
     return NextResponse.json(
       {
         error: `Too many requests from this network. Please wait ${ipLimit.retryAfterSec ?? 60} seconds.`,

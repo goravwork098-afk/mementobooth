@@ -12,6 +12,8 @@ export interface PhotoSlot {
   assignedUser?: "HOST" | "GUEST" | "BOTH"; // which partner takes this slot
 }
 
+export type FrameSlot = PhotoSlot;
+
 export interface FrameDecoration {
   id: string;
   type: "text" | "sticker" | "border" | "timestamp" | "heart";

@@ -79,6 +79,8 @@ export async function GET(
       isReady: p.isReady,
       cameraGranted: p.cameraGranted,
       micGranted: p.micGranted,
+      deviceType: p.deviceType,
+      deviceModel: p.deviceModel,
     })),
   });
 }

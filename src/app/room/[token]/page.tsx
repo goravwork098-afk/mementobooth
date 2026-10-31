@@ -135,6 +135,8 @@ export default async function RoomPage({
           isReady: p.isReady,
           cameraGranted: p.cameraGranted,
           micGranted: p.micGranted,
+          deviceType: p.deviceType,
+          deviceModel: p.deviceModel,
         })),
       }}
       currentUserId={userId}

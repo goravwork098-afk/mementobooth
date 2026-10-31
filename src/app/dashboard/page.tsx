@@ -7,6 +7,7 @@ import {
   LogOut,
   Sparkles,
   Users,
+  Image as ImageIcon,
 } from "lucide-react";
 import { auth } from "@/auth";
 import { signOutAction } from "@/app/actions/session";
@@ -193,7 +194,8 @@ export default async function DashboardPage() {
                     />
                     {room.selectedFrame ? (
                       <span className="frame-badge">
-                        🖼 {room.selectedFrame.name}
+                        <ImageIcon size={13} />
+                        {room.selectedFrame.name}
                       </span>
                     ) : (
                       <span className="frame-badge frame-none">

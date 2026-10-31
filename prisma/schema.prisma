@@ -138,6 +138,21 @@ model RateLimitRecord {
   @@index([key, expiresAt])
 }
 
+model SuspiciousIpRecord {
+  id             String    @id @default(cuid())
+  ipAddress      String    @unique
+  failedAttempts Int       @default(1)
+  isBlocked      Boolean   @default(false)
+  blockedUntil   DateTime?
+  reason         String?   // e.g. "EXCESSIVE_FAILED_OTP", "SUSPICIOUS_BRUTE_FORCE"
+  lastSeenAt     DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([ipAddress, isBlocked])
+  @@index([blockedUntil])
+}
+
 // --------------------------------------------------------
 // Photobooth Room & Participant Models
 // --------------------------------------------------------
@@ -194,6 +209,12 @@ model RoomParticipant {
   
   joinedAt       DateTime        @default(now())
   lastPingAt     DateTime        @default(now()) // Heartbeat for disconnection detection
+
+  // Device & Hardware Telemetry
+  deviceType     String?         // "MOBILE" | "TABLET" | "DESKTOP"
+  deviceModel    String?         // e.g. "iPhone", "Pixel 8", "Samsung Galaxy", "Macintosh"
+  os             String?         // e.g. "iOS", "Android", "macOS", "Windows"
+  browser        String?         // e.g. "Mobile Safari", "Chrome", "Firefox"
 
   @@unique([roomId, userId])
   @@index([roomId])

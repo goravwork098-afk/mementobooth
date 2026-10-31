@@ -1,5 +1,6 @@
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import prisma from "@/lib/prisma";
+import { recordSuspiciousFailure, recordSuccessfulAuth } from "@/lib/security";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -45,6 +46,14 @@ export async function consumeEmailOtp(email: string, code: string, name?: string
       where: { id: record.id, consumedAt: null },
       data: { attempts: { increment: 1 } },
     });
+    if (record.ipAddress) {
+      await recordSuspiciousFailure(
+        record.ipAddress,
+        "FAILED_OTP_VERIFICATION",
+        5,
+        30
+      );
+    }
     return null;
   }
 
@@ -68,6 +77,10 @@ export async function consumeEmailOtp(email: string, code: string, name?: string
       create: { email: normalized, name: trimmedName || null },
     });
   });
+
+  if (consumed && record.ipAddress) {
+    await recordSuccessfulAuth(record.ipAddress);
+  }
 
   return consumed;
 }

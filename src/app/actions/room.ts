@@ -2,9 +2,11 @@
 
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import prisma from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { generateRoomCode } from "@/lib/room-code";
+import { detectDeviceInfo } from "@/lib/device-detection";
 import { FREE_TIER_ENTITLEMENTS, PRO_TIER_ENTITLEMENTS } from "@/types/entitlements";
 
 export async function createRoomAction() {
@@ -67,6 +69,9 @@ export async function createRoomAction() {
       );
     }
 
+    const reqHeaders = await headers();
+    const deviceInfo = detectDeviceInfo(reqHeaders);
+
     const newRoom = await tx.room.create({
       data: {
         code,
@@ -82,6 +87,10 @@ export async function createRoomAction() {
         roomId: newRoom.id,
         userId,
         role: "HOST",
+        deviceType: deviceInfo.deviceType,
+        deviceModel: deviceInfo.deviceModel,
+        os: deviceInfo.os,
+        browser: deviceInfo.browser,
       },
     });
 

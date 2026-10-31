@@ -12,10 +12,26 @@ import {
   X,
   Play,
   QrCode as QrIcon,
+  FlipHorizontal,
+  SwitchCamera,
+  Volume2,
+  VolumeX,
+  Smartphone,
+  Tablet,
+  Monitor,
+  Sparkles,
+  Smile,
+  Palette,
 } from "lucide-react";
 import QRCode from "qrcode";
 import FramePicker from "./frame-picker";
 import Composer from "./composer";
+import { CAMERA_FILTERS, getFilterById } from "@/lib/camera-filters";
+import {
+  FACE_STICKER_PRESETS,
+  getDefaultFaceBox,
+  renderFaceSticker,
+} from "@/lib/face-stickers";
 import {
   toggleReadyAction,
   leaveRoomAction,
@@ -28,6 +44,7 @@ import {
   transitionToComposingAction,
   resetCountdownAction,
 } from "@/app/actions/capture";
+import { playCountdownBeep, playShutterSound } from "@/lib/audio-effects";
 import type { FrameConfig } from "@/types/frame";
 
 /* ──────────────────────────────────────────────────────────── */
@@ -52,6 +69,8 @@ interface Participant {
   isReady: boolean;
   cameraGranted: boolean;
   micGranted: boolean;
+  deviceType?: string | null;
+  deviceModel?: string | null;
 }
 
 interface RoomState {
@@ -121,8 +140,34 @@ export default function Lobby({
   // Camera
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [cameraGranted, setCameraGranted] = useState(false);
+  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [isMirrored, setIsMirrored] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [selectedFilterId, setSelectedFilterId] = useState<string>("natural");
+  const activeFilter = getFilterById(selectedFilterId);
+  const [selectedStickerId, setSelectedStickerId] = useState<string>("none");
+  const [activeEffectTab, setActiveEffectTab] = useState<"filters" | "stickers">("filters");
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const arCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const lastBeepNumRef = useRef<number>(-1);
+
+  const toggleCameraFacing = useCallback(() => {
+    setFacingMode((prev) => {
+      const next = prev === "user" ? "environment" : "user";
+      setIsMirrored(next === "user");
+      return next;
+    });
+  }, []);
+
+  const toggleMirror = useCallback(() => {
+    setIsMirrored((prev) => !prev);
+  }, []);
+
+  const toggleSound = useCallback(() => {
+    setSoundEnabled((prev) => !prev);
+  }, []);
 
   // Photos & Multi-Slot State
   const [myPhotos, setMyPhotos] = useState<string[]>([]);
@@ -178,14 +223,18 @@ export default function Lobby({
 
     async function initCamera() {
       try {
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach((t) => t.stop());
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false,
         });
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
+        localStreamRef.current = stream;
         setLocalStream(stream);
         setCameraGranted(true);
         if (videoRef.current) {
@@ -201,7 +250,7 @@ export default function Lobby({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [facingMode]);
 
   // Ensure video element gets stream
   useEffect(() => {
@@ -214,6 +263,39 @@ export default function Lobby({
   useEffect(() => {
     canvasRef.current = document.createElement("canvas");
   }, []);
+
+  // Live AR Face Sticker render loop
+  useEffect(() => {
+    let animId: number;
+    const canvas = arCanvasRef.current;
+    const video = videoRef.current;
+
+    function renderLoop() {
+      if (canvas && video && selectedStickerId !== "none") {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const vw = video.videoWidth || 1280;
+          const vh = video.videoHeight || 720;
+          if (canvas.width !== vw || canvas.height !== vh) {
+            canvas.width = vw;
+            canvas.height = vh;
+          }
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const faceBox = getDefaultFaceBox(canvas.width, canvas.height);
+          renderFaceSticker(ctx, selectedStickerId, faceBox, performance.now());
+        }
+      } else if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+      animId = requestAnimationFrame(renderLoop);
+    }
+
+    animId = requestAnimationFrame(renderLoop);
+    return () => cancelAnimationFrame(animId);
+  }, [selectedStickerId]);
 
   /* ── Fetch partner's photos ── */
   const fetchAllPartnerPhotos = useCallback(async () => {
@@ -264,13 +346,40 @@ export default function Lobby({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    if (soundEnabled) {
+      playShutterSound();
+    }
+
     // Flash visual effect
     setPhase("capturing");
     await new Promise((r) => setTimeout(r, 200));
 
     canvas.width = video.videoWidth || 1280;
     canvas.height = video.videoHeight || 720;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    if (activeFilter.canvasFilter !== "none") {
+      ctx.filter = activeFilter.canvasFilter;
+    }
+
+    if (isMirrored) {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (selectedStickerId !== "none") {
+        ctx.filter = "none";
+        const faceBox = getDefaultFaceBox(canvas.width, canvas.height);
+        renderFaceSticker(ctx, selectedStickerId, faceBox, performance.now());
+      }
+    } else {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (selectedStickerId !== "none") {
+        ctx.filter = "none";
+        const faceBox = getDefaultFaceBox(canvas.width, canvas.height);
+        renderFaceSticker(ctx, selectedStickerId, faceBox, performance.now());
+      }
+    }
+    ctx.restore();
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
 
     setMyPhotos((prev) => {
@@ -335,12 +444,17 @@ export default function Lobby({
     selectedDuration,
     fetchAllPartnerPhotos,
     pollForPartnerPhotos,
+    isMirrored,
+    soundEnabled,
+    activeFilter,
+    selectedStickerId,
   ]);
 
   /* ── Calibrated local countdown display ── */
   const startLocalCountdown = useCallback(
     (serverStartTimeMs: number, durationSec: number) => {
       if (countdownRef.current) clearInterval(countdownRef.current);
+      lastBeepNumRef.current = -1;
 
       // Calibrate countdown against server clock offset
       const targetLocalEndTime =
@@ -354,6 +468,17 @@ export default function Lobby({
         const displayNum = Math.ceil(remaining);
         setCountdownDisplay(displayNum);
 
+        if (
+          displayNum > 0 &&
+          displayNum <= 3 &&
+          displayNum !== lastBeepNumRef.current
+        ) {
+          lastBeepNumRef.current = displayNum;
+          if (soundEnabled) {
+            playCountdownBeep(displayNum === 1);
+          }
+        }
+
         if (remaining <= 0) {
           if (countdownRef.current) clearInterval(countdownRef.current);
           setPhase("capturing");
@@ -364,7 +489,7 @@ export default function Lobby({
       tick();
       countdownRef.current = setInterval(tick, 100);
     },
-    [doCapture]
+    [doCapture, soundEnabled]
   );
 
   /* ── Poll for room updates ── */
@@ -658,6 +783,18 @@ export default function Lobby({
             <div className="participant-status">
               <span className="status-dot online" /> Online
             </div>
+            {host?.deviceModel && (
+              <div className="participant-device-badge">
+                {host.deviceType === "MOBILE" ? (
+                  <Smartphone size={12} />
+                ) : host.deviceType === "TABLET" ? (
+                  <Tablet size={12} />
+                ) : (
+                  <Monitor size={12} />
+                )}
+                <span>{host.deviceModel}</span>
+              </div>
+            )}
             <div className="participant-flags">
               {host?.isReady ? (
                 <span className="flag flag-ready">
@@ -693,6 +830,18 @@ export default function Lobby({
                 <div className="participant-status">
                   <span className="status-dot online" /> Online
                 </div>
+                {guest.deviceModel && (
+                  <div className="participant-device-badge">
+                    {guest.deviceType === "MOBILE" ? (
+                      <Smartphone size={12} />
+                    ) : guest.deviceType === "TABLET" ? (
+                      <Tablet size={12} />
+                    ) : (
+                      <Monitor size={12} />
+                    )}
+                    <span>{guest.deviceModel}</span>
+                  </div>
+                )}
                 <div className="participant-flags">
                   {guest.isReady ? (
                     <span className="flag flag-ready">
@@ -721,11 +870,113 @@ export default function Lobby({
         <div className="camera-section">
           {cameraGranted && localStream ? (
             <div className="camera-preview">
+              {/* Camera Hardware & Utility Controls */}
+              <div className="camera-controls-bar">
+                <button
+                  type="button"
+                  className="camera-ctrl-btn"
+                  onClick={toggleCameraFacing}
+                  title={`Switch to ${facingMode === "user" ? "rear" : "selfie"} camera`}
+                  aria-label="Switch camera"
+                >
+                  <SwitchCamera size={15} />
+                  <span>{facingMode === "user" ? "Selfie" : "Rear"}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`camera-ctrl-btn ${isMirrored ? "active" : ""}`}
+                  onClick={toggleMirror}
+                  title="Toggle horizontal mirror view"
+                  aria-label="Toggle horizontal mirror view"
+                >
+                  <FlipHorizontal size={15} />
+                  <span>{isMirrored ? "Mirrored" : "Natural"}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`camera-ctrl-btn ${soundEnabled ? "active" : ""}`}
+                  onClick={toggleSound}
+                  title="Toggle shutter and countdown sounds"
+                  aria-label="Toggle sound"
+                >
+                  {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                  <span>{soundEnabled ? "Sound" : "Muted"}</span>
+                </button>
+              </div>
+
+              {/* Camera Effects Switcher (Filters vs AR Stickers) */}
+              <div className="camera-effect-modes">
+                <button
+                  type="button"
+                  className={`effect-mode-btn ${activeEffectTab === "filters" ? "active" : ""}`}
+                  onClick={() => setActiveEffectTab("filters")}
+                >
+                  <Palette size={12} /> Filters
+                </button>
+                <button
+                  type="button"
+                  className={`effect-mode-btn ${activeEffectTab === "stickers" ? "active" : ""}`}
+                  onClick={() => setActiveEffectTab("stickers")}
+                >
+                  <Smile size={12} /> AR Stickers
+                </button>
+              </div>
+
+              {/* Aesthetic Filter / AR Sticker Carousel */}
+              <div className="camera-filter-carousel">
+                {activeEffectTab === "filters"
+                  ? CAMERA_FILTERS.map((f) => {
+                      const isSelected = f.id === selectedFilterId;
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          className={`filter-pill ${isSelected ? "active" : ""}`}
+                          onClick={() => setSelectedFilterId(f.id)}
+                          title={f.description}
+                          aria-pressed={isSelected}
+                        >
+                          {f.id !== "natural" && <Sparkles size={11} />}
+                          <span>{f.name}</span>
+                        </button>
+                      );
+                    })
+                  : FACE_STICKER_PRESETS.map((s) => {
+                      const isSelected = s.id === selectedStickerId;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`filter-pill ${isSelected ? "active" : ""}`}
+                          onClick={() => setSelectedStickerId(s.id)}
+                          title={s.description}
+                          aria-pressed={isSelected}
+                        >
+                          {s.id !== "none" && <Sparkles size={11} />}
+                          <span>{s.name}</span>
+                        </button>
+                      );
+                    })}
+              </div>
+
               <video
                 ref={videoRef}
                 autoPlay
                 muted
                 playsInline
+                style={{
+                  transform: isMirrored ? "scaleX(-1)" : "none",
+                  filter: activeFilter.css,
+                }}
+              />
+
+              {/* Live AR Stickers Overlay Canvas */}
+              <canvas
+                ref={arCanvasRef}
+                className="camera-ar-canvas"
+                style={{
+                  transform: isMirrored ? "scaleX(-1)" : "none",
+                }}
               />
 
               {/* Countdown Overlay */}
@@ -888,7 +1139,7 @@ export default function Lobby({
           {phase === "countdown"
             ? "Get ready to pose!"
             : phase === "capturing"
-            ? "📸 Smile!"
+            ? "Smile!"
             : phase === "uploading"
             ? "Sending your photo…"
             : phase === "waiting"

@@ -46,4 +46,16 @@ describe("Room Code Security & Generation", () => {
     // With 32^4 = 1,048,576 combinations, collisions in 500 draws are extremely rare
     expect(generated.size).toBeGreaterThan(490);
   });
+
+  it("handles formatting and normalization rules for quick-join input", () => {
+    const normalizeCode = (input: string) => {
+      const trimmed = input.trim().toUpperCase();
+      return trimmed.startsWith("LOVE-") ? trimmed : `LOVE-${trimmed}`;
+    };
+
+    expect(normalizeCode("4x9k")).toBe("LOVE-4X9K");
+    expect(normalizeCode("  love-4x9k  ")).toBe("LOVE-4X9K");
+    expect(normalizeCode("LOVE-4X9K")).toBe("LOVE-4X9K");
+    expect(isValidRoomCodeFormat(normalizeCode("4x9k"))).toBe(true);
+  });
 });
