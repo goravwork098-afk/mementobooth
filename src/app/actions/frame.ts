@@ -6,6 +6,7 @@ import {
   buildCustomFrameConfig,
   type CustomFrameInput,
 } from "@/lib/custom-frame";
+import { generateAiFrameTheme } from "@/lib/ai-frame-theme";
 import { randomBytes } from "crypto";
 
 export async function createCustomFrameAction(input: CustomFrameInput) {
@@ -97,5 +98,15 @@ export async function deleteCustomFrameAction(frameId: string) {
   });
 
   return { success: true };
+}
+
+export async function generateAiFrameAction(prompt: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized. Please sign in to use the AI Frame Studio.");
+  }
+
+  const sanitizedPrompt = (prompt || "").trim().slice(0, 150);
+  return await generateAiFrameTheme(sanitizedPrompt);
 }
 

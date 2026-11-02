@@ -11,10 +11,12 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
+    "@gsap/react": "^2.1.2",
     "@prisma/client": "6.4.1",
     "@swc/helpers": "^0.5.23",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "gsap": "^3.15.0",
     "lucide-react": "^1.40.0",
     "next": "16.3.4",
     "next-auth": "^5.0.0-beta.32",

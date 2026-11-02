@@ -4,29 +4,29 @@ import {
   ArrowRight,
   Camera,
   Heart,
-  LogOut,
   Sparkles,
   Users,
   Image as ImageIcon,
+  KeyRound,
+  ShieldCheck,
+  Layers,
 } from "lucide-react";
 import { auth } from "@/auth";
-import { signOutAction } from "@/app/actions/session";
 import { createRoomAction } from "@/app/actions/room";
 import prisma from "@/lib/prisma";
 import { FREE_TIER_ENTITLEMENTS } from "@/types/entitlements";
 import {
   CopyInviteButton,
-  DeleteAccountButton,
   RoomCountdown,
   CreateBoothButton,
+  UserAvatar,
+  QuickJoinInline,
 } from "./components";
-import { deleteAccountAction } from "@/app/actions/session";
 
-export default async function DashboardPage() {
+export default async function DashboardOverviewPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  // JWT sessions may not include id — look up by email as fallback
   let userId = session.user.id;
   if (!userId && session.user.email) {
     const dbUser = await prisma.user.findUnique({
@@ -43,36 +43,38 @@ export default async function DashboardPage() {
   // Fetch active rooms (WAITING or READY, not expired)
   const activeRooms = await prisma.room.findMany({
     where: {
-      hostId: userId,
+      OR: [
+        { hostId: userId },
+        { participants: { some: { userId, role: "GUEST" } } },
+      ],
       status: { in: ["WAITING", "READY"] },
       expiresAt: { gt: new Date() },
     },
     include: {
       participants: {
-        include: { user: { select: { name: true, email: true } } },
+        include: { user: { select: { name: true, email: true, image: true } } },
       },
       selectedFrame: { select: { name: true, slug: true } },
     },
     orderBy: { createdAt: "desc" },
+    take: 2,
   });
 
-  // Also fetch rooms where user is a guest participant
-  const guestRooms = await prisma.room.findMany({
+  const totalActiveRoomsCount = await prisma.room.count({
     where: {
-      participants: { some: { userId, role: "GUEST" } },
+      OR: [
+        { hostId: userId },
+        { participants: { some: { userId, role: "GUEST" } } },
+      ],
       status: { in: ["WAITING", "READY"] },
       expiresAt: { gt: new Date() },
     },
-    include: {
-      participants: {
-        include: { user: { select: { name: true, email: true } } },
-      },
-      selectedFrame: { select: { name: true, slug: true } },
-    },
-    orderBy: { createdAt: "desc" },
   });
 
-  const allRooms = [...activeRooms, ...guestRooms];
+  // Count user's custom frames
+  const customFramesCount = await prisma.frame.count({
+    where: { createdById: userId },
+  });
 
   // Current month usage
   const yearMonth = `${new Date().getFullYear()}-${String(
@@ -88,31 +90,12 @@ export default async function DashboardPage() {
     process.env.NEXTAUTH_URL ?? process.env.VERCEL_URL ?? "http://localhost:3133";
 
   return (
-    <main className="dashboard-page">
-      {/* ── Nav ── */}
-      <nav className="dashboard-nav">
-        <Link href="/" className="brand">
-          <span className="brand-mark">
-            <Heart size={17} fill="currentColor" />
-          </span>
-          Memento Booth
-        </Link>
-        <div className="dashboard-user">
-          <span className="avatar">{name[0]?.toUpperCase()}</span>
-          <span className="user-name">{name}</span>
-          <form action={signOutAction}>
-            <button className="icon-button" aria-label="Sign out" title="Sign out">
-              <LogOut size={17} />
-            </button>
-          </form>
-        </div>
-      </nav>
-
-      {/* ── Welcome + Create ── */}
+    <div className="overview-container">
+      {/* ── Welcome & Command Panel ── */}
       <section className="welcome-panel">
         <div className="welcome-copy">
           <p className="eyebrow">
-            <Sparkles size={14} /> your little corner
+            <Sparkles size={14} /> private room for two
           </p>
           <h1>
             Welcome, {name}.
@@ -120,19 +103,20 @@ export default async function DashboardPage() {
             <em>Ready for a moment?</em>
           </h1>
           <p>
-            Start a private booth and invite your person. Your photos stay
-            in your browser — never on our servers.
+            Start a private booth or join your person. Photos are composed
+            directly in your browser and never saved on servers.
           </p>
 
           <div className="welcome-actions">
             <form action={createRoomAction}>
               <CreateBoothButton />
             </form>
-            <span className="usage-info">
-              <Camera size={13} /> {roomsUsed} of {roomsMax} booths this month
-            </span>
+            <div className="quick-join-wrapper">
+              <QuickJoinInline />
+            </div>
           </div>
         </div>
+
         <div className="welcome-art">
           <div className="dash-heart">
             <Heart size={32} fill="currentColor" />
@@ -140,36 +124,141 @@ export default async function DashboardPage() {
           <div className="dash-card">
             <Camera size={18} />
             <span>
-              your next memory
+              your next keepsake
               <br />
-              <strong>starts with a hello</strong>
+              <strong>starts right here</strong>
             </span>
           </div>
         </div>
       </section>
 
-      {/* ── Active Rooms ── */}
-      <section className="rooms-section">
-        <h2 className="rooms-heading">
-          <Users size={20} /> Active Booths
-        </h2>
+      {/* ── Quick Overview Stats Hub ── */}
+      <section className="overview-hub-grid">
+        <Link href="/dashboard/booths" className="hub-card">
+          <div className="hub-card-icon tone-rose">
+            <Camera size={22} />
+          </div>
+          <div className="hub-card-content">
+            <div className="hub-card-metric">{totalActiveRoomsCount}</div>
+            <div className="hub-card-title">Active Booths</div>
+            <p className="hub-card-desc">
+              {totalActiveRoomsCount > 0
+                ? "Rooms currently open and awaiting capture"
+                : "No open sessions right now"}
+            </p>
+          </div>
+          <span className="hub-card-arrow">
+            <ArrowRight size={16} />
+          </span>
+        </Link>
 
-        {allRooms.length === 0 ? (
-          <div className="dashboard-empty">
+        <Link href="/dashboard/frames" className="hub-card">
+          <div className="hub-card-icon tone-lavender">
+            <Layers size={22} />
+          </div>
+          <div className="hub-card-content">
+            <div className="hub-card-metric">{customFramesCount}</div>
+            <div className="hub-card-title">Custom Frames</div>
+            <p className="hub-card-desc">
+              {customFramesCount > 0
+                ? `${customFramesCount} tailored designs created by you`
+                : "Design romantic 2-cut & 4-cut frames"}
+            </p>
+          </div>
+          <span className="hub-card-arrow">
+            <ArrowRight size={16} />
+          </span>
+        </Link>
+
+        <Link href="/dashboard/join" className="hub-card">
+          <div className="hub-card-icon tone-gold">
+            <KeyRound size={22} />
+          </div>
+          <div className="hub-card-content">
+            <div className="hub-card-metric">4-Letter</div>
+            <div className="hub-card-title">Enter Room Code</div>
+            <p className="hub-card-desc">
+              Instantly connect to your partner&apos;s booth session
+            </p>
+          </div>
+          <span className="hub-card-arrow">
+            <ArrowRight size={16} />
+          </span>
+        </Link>
+
+        <Link href="/dashboard/account" className="hub-card">
+          <div className="hub-card-icon tone-green">
+            <ShieldCheck size={22} />
+          </div>
+          <div className="hub-card-content">
+            <div className="hub-card-metric">{roomsMax - roomsUsed} Left</div>
+            <div className="hub-card-title">Monthly Quota & Safety</div>
+            <p className="hub-card-desc">
+              {roomsUsed} of {roomsMax} booths used this calendar month
+            </p>
+          </div>
+          <span className="hub-card-arrow">
+            <ArrowRight size={16} />
+          </span>
+        </Link>
+      </section>
+
+      {/* ── Active Booths Section (Recent) ── */}
+      <section className="dashboard-section">
+        <div className="section-title-row">
+          <div>
+            <h2 className="rooms-heading">
+              <Users size={20} /> Active Sessions
+            </h2>
+            <span className="section-subtitle">
+              {totalActiveRoomsCount > 0
+                ? "Live photobooth rooms ready for camera sync"
+                : "No active rooms right now"}
+            </span>
+          </div>
+          {totalActiveRoomsCount > 2 && (
+            <Link href="/dashboard/booths" className="section-see-all-link">
+              View all ({totalActiveRoomsCount}) <ArrowRight size={14} />
+            </Link>
+          )}
+        </div>
+
+        {activeRooms.length === 0 ? (
+          <div className="dashboard-empty-card">
             <div className="empty-icon">
-              <Camera size={22} />
+              <Camera size={24} />
             </div>
-            <h3>No booths yet</h3>
-            <p>Create your first room and send the invite to your person.</p>
+            <h3>No active booths right now</h3>
+            <p>
+              Create a room to generate a private 4-letter code, or enter your
+              partner&apos;s code to connect.
+            </p>
+            <form action={createRoomAction}>
+              <CreateBoothButton />
+            </form>
           </div>
         ) : (
           <div className="rooms-grid">
-            {allRooms.map((room) => {
+            {activeRooms.map((room) => {
               const isHost = room.hostId === userId;
+              const hostParticipant = room.participants.find(
+                (p) => p.role === "HOST"
+              );
               const guestParticipant = room.participants.find(
                 (p) => p.role === "GUEST"
               );
               const inviteUrl = `${baseUrl}/join/${room.token}`;
+
+              const hostName = isHost
+                ? name
+                : hostParticipant?.user?.name ?? "Host";
+              const guestName = guestParticipant
+                ? guestParticipant.userId === userId
+                  ? name
+                  : guestParticipant.user?.name ??
+                    guestParticipant.user?.email ??
+                    "Guest"
+                : null;
 
               return (
                 <article key={room.id} className="room-card">
@@ -183,15 +272,13 @@ export default async function DashboardPage() {
                       }`}
                     >
                       {room.status === "WAITING"
-                        ? "Waiting"
+                        ? "Waiting for Guest"
                         : "Ready"}
                     </span>
                   </div>
 
                   <div className="room-card-meta">
-                    <RoomCountdown
-                      expiresAt={room.expiresAt.toISOString()}
-                    />
+                    <RoomCountdown expiresAt={room.expiresAt.toISOString()} />
                     {room.selectedFrame ? (
                       <span className="frame-badge">
                         <ImageIcon size={13} />
@@ -199,28 +286,53 @@ export default async function DashboardPage() {
                       </span>
                     ) : (
                       <span className="frame-badge frame-none">
-                        No frame yet
+                        Standard Frame
                       </span>
                     )}
                   </div>
 
-                  <div className="room-card-people">
-                    <span className="participant-chip host-chip">
-                      {isHost ? "You (Host)" : room.participants.find((p) => p.role === "HOST")?.user.name ?? "Host"}
-                    </span>
-                    {guestParticipant ? (
-                      <span className="participant-chip guest-chip">
-                        {guestParticipant.userId === userId
-                          ? "You (Guest)"
-                          : guestParticipant.user.name ??
-                            guestParticipant.user.email ??
-                            "Guest"}
-                      </span>
-                    ) : (
-                      <span className="participant-chip waiting-chip">
-                        Waiting for guest…
-                      </span>
-                    )}
+                  {/* Couple Participant Display with Dynamic Vector Avatars */}
+                  <div className="room-card-people-duo">
+                    <div className="participant-item">
+                      <UserAvatar
+                        name={hostName}
+                        email={hostParticipant?.user?.email}
+                        imageUrl={hostParticipant?.user?.image}
+                        size={34}
+                      />
+                      <div className="participant-info">
+                        <strong>{isHost ? "You (Host)" : hostName}</strong>
+                        <small className="participant-role">Booth Host</small>
+                      </div>
+                    </div>
+
+                    <div className="participant-item">
+                      {guestParticipant ? (
+                        <>
+                          <UserAvatar
+                            name={guestName}
+                            email={guestParticipant.user?.email}
+                            imageUrl={guestParticipant.user?.image}
+                            size={34}
+                          />
+                          <div className="participant-info">
+                            <strong>
+                              {guestParticipant.userId === userId
+                                ? "You (Guest)"
+                                : guestName}
+                            </strong>
+                            <small className="participant-role">
+                              Guest Connected
+                            </small>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="participant-waiting-box">
+                          <span className="waiting-pulse" />
+                          <span>Waiting for partner…</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {isHost && !guestParticipant && (
@@ -234,7 +346,7 @@ export default async function DashboardPage() {
                     href={`/room/${room.token}`}
                     className="button button-small room-rejoin"
                   >
-                    {isHost ? "Open Lobby" : "Rejoin"}{" "}
+                    {isHost ? "Enter Photobooth" : "Rejoin Booth"}{" "}
                     <ArrowRight size={14} />
                   </Link>
                 </article>
@@ -243,25 +355,6 @@ export default async function DashboardPage() {
           </div>
         )}
       </section>
-
-      {/* ── Account ── */}
-      <section className="account-section">
-        <h3>Account</h3>
-        <div className="account-actions">
-          <form action={signOutAction}>
-            <button className="button button-quiet button-small">
-              <LogOut size={14} /> Sign Out
-            </button>
-          </form>
-          <DeleteAccountButton action={deleteAccountAction} />
-        </div>
-      </section>
-
-      {/* ── Footer ── */}
-      <footer className="dashboard-footer">
-        <span>Private by design.</span>
-        <span>© 2026 Memento Booth</span>
-      </footer>
-    </main>
+    </div>
   );
 }

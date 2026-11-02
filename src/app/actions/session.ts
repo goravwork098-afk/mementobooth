@@ -39,3 +39,48 @@ export async function deleteAccountAction() {
 
   await signOut({ redirectTo: "/" });
 }
+
+export async function updateAvatarAction(avatarUrl: string) {
+  const session = await auth();
+  if (!session?.user) {
+    throw new Error("Unauthorized");
+  }
+
+  const userId = session.user.id;
+  const email = session.user.email;
+  if (!userId && !email) {
+    throw new Error("Missing user identifier");
+  }
+
+  // Validate URL protocol and hostname to ensure security
+  if (!avatarUrl || typeof avatarUrl !== "string") {
+    throw new Error("Invalid avatar URL");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(avatarUrl);
+  } catch {
+    throw new Error("Invalid URL format");
+  }
+
+  if (parsed.protocol !== "https:" || parsed.hostname !== "api.dicebear.com") {
+    throw new Error("Avatar URL must originate from trusted provider");
+  }
+
+  const user = await prisma.user.findFirst({
+    where: userId ? { id: userId } : { email: email! },
+    select: { id: true },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { image: avatarUrl },
+  });
+
+  return { success: true, avatarUrl };
+}

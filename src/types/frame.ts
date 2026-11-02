@@ -1,5 +1,7 @@
 export type FrameCategory = "CLASSIC" | "ROMANTIC" | "VINTAGE" | "SEASONAL" | "CUSTOM";
 
+export type SlotShape = "rectangle" | "heart" | "arch" | "circle" | "star";
+
 export interface PhotoSlot {
   id: string;
   slotIndex: number;
@@ -10,6 +12,7 @@ export interface PhotoSlot {
   rotation?: number;  // degrees
   borderRadius?: number; // px or %
   assignedUser?: "HOST" | "GUEST" | "BOTH"; // which partner takes this slot
+  shape?: SlotShape;  // authentic geometric shape mask
 }
 
 export type FrameSlot = PhotoSlot;

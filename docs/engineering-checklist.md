@@ -14,7 +14,7 @@
 | **1. Authentication & Private Room Security** | Complete | 100% | P0 |
 | **2. Sequential Multi-Slot Capture Engine** | Complete | 100% | P0 |
 | **3. Synchronized Retake & Canvas Composer** | Complete | 100% | P1 |
-| **4. Cloud Storage, Export & Social Sharing** | Operational | 50% | P2 |
+| **4. Cloud Storage, Export & Social Sharing** | Complete | 100% | P2 |
 | **5. Subscriptions, Stripe & Entitlements** | Scaffolding | 10% | P2 |
 | **6. Real-Time Camera Filters & Snapchat AR** | Complete | 100% | P2 |
 | **7. Continuous Integration & Quality Testing** | Passing | 90% | P0 |
@@ -28,6 +28,7 @@
 - [x] Responsive CSS design tokens configured for romantic color palette, film borders, and glassmorphism.
 - [x] **Fix**: Update landing page call-to-action buttons to redirect authenticated users to the dashboard and unauthenticated users to sign-up (replaced dead `#join` and `#top` anchor targets).
 - [x] **Feature**: Implement interactive "Enter Room Code" quick-join modal on the landing page for guests with display codes (`resolveRoomCodeAction`).
+- [x] **Feature**: Landing page redesign integrating Open Peeps vector character illustrations and GSAP ScrollTrigger timeline animations.
 - [x] **Enhancement**: Verify mobile layout responsiveness across devices (320px to 1440px).
 
 ---
@@ -105,8 +106,8 @@
 ## Phase 5: Cloud Storage & Sharing (P2)
 
 - [x] Google Drive OAuth picker integration for saving keepsakes directly to user's personal cloud.
-- [ ] Ephemeral download link sharing for couples.
-- [ ] One-click email keepsake delivery using configured email transport.
+- [x] Ephemeral download link sharing for couples.
+- [x] One-click email keepsake delivery using configured email transport.
 
 ---
 

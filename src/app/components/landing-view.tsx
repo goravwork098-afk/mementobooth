@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   Camera,
@@ -13,8 +14,10 @@ import {
   Sparkles,
   KeyRound,
   X,
+  Sparkle,
 } from "lucide-react";
 import { QuickJoinModal } from "./quick-join-modal";
+import { gsap, useGSAP } from "@/lib/gsap";
 
 const themes = ["rose", "lavender", "gold"] as const;
 
@@ -28,10 +31,26 @@ function BoothPreview({ tone = "rose" }: { tone?: string }) {
       </div>
       <div className="booth-screens">
         <div className="person-screen person-one">
-          <span>you</span>
+          <Image
+            src="/peeps/peep-8.png"
+            alt="You in New York"
+            width={130}
+            height={160}
+            className="booth-screen-avatar"
+            unoptimized
+          />
+          <span className="screen-tag">you</span>
         </div>
         <div className="person-screen person-two">
-          <span>your person</span>
+          <Image
+            src="/peeps/peep-13.png"
+            alt="Your person in London"
+            width={130}
+            height={160}
+            className="booth-screen-avatar"
+            unoptimized
+          />
+          <span className="screen-tag">your person</span>
         </div>
       </div>
       <div className="countdown">
@@ -65,10 +84,162 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
   const [activeTheme, setActiveTheme] = useState<number>(0);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const distancePathRef = useRef<SVGPathElement>(null);
+
   const createBoothUrl = isAuthenticated ? "/dashboard" : "/signup";
 
+  useGSAP(
+    () => {
+      // Respect user motion preferences
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+      if (prefersReducedMotion) return;
+
+      // ── 1. Hero Entrance Timeline ──
+      const heroTl = gsap.timeline({ defaults: { ease: "power3.out" } });
+      heroTl
+        .from(".hero-copy .eyebrow", { y: 20, opacity: 0, duration: 0.6 })
+        .from(".hero-copy h1", { y: 35, opacity: 0, duration: 0.8 }, "-=0.4")
+        .from(".hero-lede", { y: 25, opacity: 0, duration: 0.6 }, "-=0.4")
+        .from(".hero-actions", { y: 20, opacity: 0, scale: 0.96, duration: 0.6 }, "-=0.4")
+        .from(".hero-art", { y: 40, opacity: 0, duration: 0.8 }, "-=0.5")
+        .from(".hero-art-peep", { x: 30, opacity: 0, duration: 0.8 }, "-=0.6");
+
+      // Continuous gentle hover for hero companion character
+      gsap.to(".hero-art-peep", {
+        y: "+=8",
+        duration: 3,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      });
+
+      // ── 2. Scroll-triggered section reveals ──
+      gsap.utils.toArray<HTMLElement>(".section-intro").forEach((el) => {
+        gsap.from(el, {
+          scrollTrigger: {
+            trigger: el,
+            start: "top 85%",
+            toggleActions: "play none none reverse",
+          },
+          y: 40,
+          opacity: 0,
+          duration: 0.8,
+          ease: "power2.out",
+        });
+      });
+
+      // ── 3. Compare cards stagger ──
+      gsap.from(".compare-card", {
+        scrollTrigger: {
+          trigger: ".compare-grid",
+          start: "top 80%",
+        },
+        y: 45,
+        opacity: 0,
+        duration: 0.8,
+        stagger: 0.2,
+        ease: "power2.out",
+      });
+
+      // ── 4. Step cards stagger with peep images ──
+      gsap.from(".steps-grid article", {
+        scrollTrigger: {
+          trigger: ".steps-grid",
+          start: "top 80%",
+        },
+        y: 50,
+        opacity: 0,
+        duration: 0.8,
+        stagger: 0.18,
+        ease: "power2.out",
+      });
+
+      // ── 5. Distance path draw animation (scrubbed) ──
+      if (distancePathRef.current) {
+        const path = distancePathRef.current;
+        const pathLength = path.getTotalLength();
+        gsap.set(path, {
+          strokeDasharray: pathLength,
+          strokeDashoffset: pathLength,
+        });
+
+        gsap.to(path, {
+          scrollTrigger: {
+            trigger: ".distance-section",
+            start: "top 75%",
+            end: "center center",
+            scrub: 1,
+          },
+          strokeDashoffset: 0,
+          ease: "none",
+        });
+
+        gsap.from(".distance-peep", {
+          scrollTrigger: {
+            trigger: ".distance-section",
+            start: "top 80%",
+          },
+          scale: 0.9,
+          opacity: 0,
+          duration: 0.8,
+          stagger: 0.2,
+          ease: "back.out(1.2)",
+        });
+
+        gsap.from(".map-heart-badge", {
+          scrollTrigger: {
+            trigger: ".distance-section",
+            start: "center 70%",
+          },
+          scale: 0,
+          opacity: 0,
+          duration: 0.6,
+          ease: "elastic.out(1, 0.5)",
+        });
+      }
+
+      // ── 6. Privacy band reveal ──
+      gsap.from(".privacy-band", {
+        scrollTrigger: {
+          trigger: ".privacy-band",
+          start: "top 85%",
+        },
+        y: 35,
+        opacity: 0,
+        duration: 0.75,
+        ease: "power2.out",
+      });
+
+      // ── 7. Parallax for CTA background characters ──
+      gsap.to(".cta-bg-peep-left", {
+        scrollTrigger: {
+          trigger: ".final-cta",
+          start: "top bottom",
+          end: "bottom top",
+          scrub: true,
+        },
+        y: -35,
+        ease: "none",
+      });
+      gsap.to(".cta-bg-peep-right", {
+        scrollTrigger: {
+          trigger: ".final-cta",
+          start: "top bottom",
+          end: "bottom top",
+          scrub: true,
+        },
+        y: -50,
+        ease: "none",
+      });
+    },
+    { scope: containerRef }
+  );
+
   return (
-    <main className="site-shell">
+    <main ref={containerRef} className="site-shell">
       {/* ── Quick Join Modal ── */}
       <QuickJoinModal
         isOpen={isJoinModalOpen}
@@ -102,15 +273,11 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
         <div className="nav-actions">
           <button
             type="button"
-            className="text-link flex-center gap-1"
+            className="nav-code-btn"
             onClick={() => setIsJoinModalOpen(true)}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-            }}
           >
-            <KeyRound size={14} /> Enter Code
+            <KeyRound size={14} />
+            <span>Enter Code</span>
           </button>
 
           {isAuthenticated ? (
@@ -142,7 +309,7 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
 
       {/* ── Hero Section ── */}
       <section id="top" className="hero section-pad">
-        <div className="hero-copy reveal-up">
+        <div className="hero-copy">
           <p className="eyebrow">
             <Heart size={14} fill="currentColor" /> a little date night, no matter the distance
           </p>
@@ -175,7 +342,20 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
           </p>
         </div>
 
-        <div className="hero-art reveal-in">
+        <div className="hero-art">
+          {/* Standing companion illustration alongside the booth card */}
+          <div className="hero-art-peep" aria-hidden="true">
+            <Image
+              src="/peeps/a-person/standing.svg"
+              alt=""
+              width={140}
+              height={300}
+              priority
+              unoptimized
+              className="art-peep-img"
+            />
+          </div>
+
           <div className="float-note note-left">
             made for
             <br />
@@ -213,8 +393,14 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
         <div className="compare-grid">
           <div className="compare-card muted-card">
             <div className="fake-call">
-              <div className="fake-person" />
-              <div className="fake-person small" />
+              <Image
+                src="/peeps/peep-23.png"
+                alt="Video call screenshot"
+                width={150}
+                height={200}
+                className="fake-call-avatar"
+                unoptimized
+              />
               <span className="call-time">00:42:18</span>
             </div>
             <p className="compare-label negative">just another screenshot</p>
@@ -245,8 +431,17 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
         </div>
         <div className="steps-grid">
           <article>
+            <div className="step-peep-wrap">
+              <Image
+                src="/peeps/peep-31.png"
+                alt="Start private booth"
+                width={120}
+                height={150}
+                className="peep-step-avatar"
+                unoptimized
+              />
+            </div>
             <span>01</span>
-            <Camera />
             <h3>Start a private booth</h3>
             <p>
               Create an account, make a room, and send the invite link or 4-letter code to your person.
@@ -260,23 +455,34 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
             </button>
           </article>
           <article>
-            <span>02</span>
-            <div className="mini-count">
-              <b>3</b>
-              <b>2</b>
-              <b>1</b>
-              <strong>
-                <Camera size={16} />
-              </strong>
+            <div className="step-peep-wrap">
+              <Image
+                src="/peeps/peep-17.png"
+                alt="Pose and countdown"
+                width={120}
+                height={150}
+                className="peep-step-avatar"
+                unoptimized
+              />
             </div>
+            <span>02</span>
             <h3>Pose. Count down. Smile.</h3>
             <p>
               Your cameras flash at the same time across every pose slot, even when your clocks differ.
             </p>
           </article>
           <article>
+            <div className="step-peep-wrap">
+              <Image
+                src="/peeps/peep-79.png"
+                alt="Keep favorite frame"
+                width={120}
+                height={150}
+                className="peep-step-avatar"
+                unoptimized
+              />
+            </div>
             <span>03</span>
-            <Sparkles />
             <h3>Keep your favorite frame</h3>
             <p>
               Choose a theme, add your date stamp, and download the finished photo strip instantly.
@@ -312,7 +518,7 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
         </div>
       </section>
 
-      {/* ── Distance Section ── */}
+      {/* ── Distance Section (Interactive SVG Arc & Peeps) ── */}
       <section className="section-pad distance-section">
         <div className="distance-copy">
           <p className="eyebrow">love, in two places</p>
@@ -329,27 +535,69 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
             Make a keepsake <ArrowRight size={15} />
           </Link>
         </div>
-        <div className="map-art">
-          <div className="map-line" />
-          <div className="map-city city-a">
-            <MapPin size={18} fill="currentColor" />
-            <b>New York</b>
+
+        <div className="distance-interactive-map">
+          {/* Animated SVG Path connecting both cities */}
+          <div className="distance-svg-wrap">
+            <svg
+              className="distance-svg"
+              viewBox="0 0 600 160"
+              fill="none"
+              preserveAspectRatio="none"
+            >
+              <path
+                ref={distancePathRef}
+                d="M 80 110 Q 300 10 520 110"
+                stroke="var(--rose)"
+                strokeWidth="3"
+                strokeDasharray="6 6"
+              />
+            </svg>
           </div>
-          <div className="map-city city-b">
-            <MapPin size={18} fill="currentColor" />
-            <b>London</b>
+
+          {/* New York Character (Male) */}
+          <div className="distance-peep peep-ny">
+            <Image
+              src="/peeps/peep-standing-3.svg"
+              alt="He is in New York"
+              width={100}
+              height={250}
+              className="peep-img"
+              unoptimized
+            />
+            <div className="city-pill">
+              <MapPin size={13} />
+              <span>New York</span>
+            </div>
           </div>
-          <span className="map-heart">
-            <Heart size={18} fill="currentColor" />
-          </span>
-          <span className="map-star star-one">✦</span>
-          <span className="map-star star-two">✦</span>
+
+          {/* Connected Heart Badge */}
+          <div className="map-heart-badge">
+            <Heart size={16} fill="currentColor" />
+            <span>Connected</span>
+          </div>
+
+          {/* London Character (Female) */}
+          <div className="distance-peep peep-london">
+            <Image
+              src="/peeps/a-person/sitting.svg"
+              alt="She is in London"
+              width={130}
+              height={230}
+              className="peep-img"
+              unoptimized
+            />
+            <div className="city-pill">
+              <MapPin size={13} />
+              <span>London</span>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* ── Theme Customizer ── */}
       <section className="customizer section-pad">
-        <div className="section-intro">
+        <div className="section-intro centered">
           <p className="eyebrow">make it yours</p>
           <h2>
             Pick a mood.
@@ -395,8 +643,30 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
         </div>
       </section>
 
-      {/* ── Final Call to Action ── */}
+      {/* ── Final Call to Action with Parallax Peeps ── */}
       <section id="join" className="final-cta section-pad">
+        {/* Parallax Background Peeps */}
+        <div className="cta-bg-peep-left" aria-hidden="true">
+          <Image
+            src="/peeps/a-person/sitting.svg"
+            alt=""
+            width={140}
+            height={200}
+            unoptimized
+            className="peep-sitting-img"
+          />
+        </div>
+        <div className="cta-bg-peep-right" aria-hidden="true">
+          <Image
+            src="/peeps/peep-34.png"
+            alt=""
+            width={130}
+            height={180}
+            unoptimized
+            className="peep-sitting-img"
+          />
+        </div>
+
         <p className="eyebrow">
           <Heart size={14} fill="currentColor" /> your next little memory is waiting
         </p>
@@ -412,6 +682,8 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
             justifyContent: "center",
             gap: "12px",
             flexWrap: "wrap",
+            position: "relative",
+            zIndex: 2,
           }}
         >
           <Link className="button" href={createBoothUrl}>
@@ -426,7 +698,9 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
           </button>
         </div>
         <div className="cta-sparkles">
-          ✦ <Heart size={16} fill="currentColor" /> ✦
+          <Sparkle size={18} />
+          <Heart size={16} fill="currentColor" />
+          <Sparkle size={18} />
         </div>
       </section>
 
@@ -439,9 +713,8 @@ export function LandingView({ isAuthenticated, userName }: LandingViewProps) {
           <span>Memento Booth</span>
         </Link>
         <span>Made for couples everywhere.</span>
-        <span>© 2026 Memento Booth</span>
+        <span>&copy; 2026 Memento Booth</span>
       </footer>
     </main>
   );
 }
-

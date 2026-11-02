@@ -16,6 +16,9 @@ import {
   ExternalLink,
   AlertCircle,
   CheckCircle,
+  Share2,
+  Mail,
+  Copy,
 } from "lucide-react";
 import type { FrameConfig, FrameSlot } from "@/types/frame";
 import {
@@ -24,11 +27,16 @@ import {
   PRINT_DPI_SCALE,
   type SlotCropTransform,
 } from "@/lib/composer-transform";
+import { traceSlotPath } from "@/lib/custom-frame";
 import {
   loadGoogleIdentityScript,
   requestGoogleDriveToken,
   uploadKeepsakeToGoogleDrive,
 } from "@/lib/google-drive";
+import {
+  createShareableKeepsakeAction,
+  sendKeepsakeEmailAction,
+} from "@/app/actions/keepsake";
 
 interface ComposerProps {
   frameConfig: FrameConfig;
@@ -59,6 +67,14 @@ export default function Composer({
   >("idle");
   const [gdriveError, setGdriveError] = useState<string | null>(null);
   const [gdriveLink, setGdriveLink] = useState<string | null>(null);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [sharingLink, setSharingLink] = useState(false);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [transforms, setTransforms] = useState<Record<string, SlotCropTransform>>({});
 
@@ -159,9 +175,8 @@ export default function Composer({
           ctx.translate(-cx, -cy);
         }
 
-        // Rounded clipping path
-        ctx.beginPath();
-        ctx.roundRect(sx, sy, sw, sh, radius);
+        // Shape-aware clipping path (Heart, Arch, Circle, Star, Rectangle)
+        traceSlotPath(ctx, slot.shape, sx, sy, sw, sh, radius);
         ctx.clip();
 
         // Determine image for slot
@@ -202,11 +217,10 @@ export default function Composer({
           ctx.drawImage(img, dims.drawX, dims.drawY, dims.drawW, dims.drawH);
         }
 
-        // Subtle inner border
-        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        // Shape-aware inner outline border
+        ctx.strokeStyle = "rgba(255,255,255,0.2)";
         ctx.lineWidth = 2 * scaleFactor;
-        ctx.beginPath();
-        ctx.roundRect(sx, sy, sw, sh, radius);
+        traceSlotPath(ctx, slot.shape, sx, sy, sw, sh, radius);
         ctx.stroke();
 
         ctx.restore();
@@ -217,8 +231,7 @@ export default function Composer({
           ctx.strokeStyle = "#e11d48";
           ctx.lineWidth = 3 * scaleFactor;
           ctx.setLineDash([8 * scaleFactor, 6 * scaleFactor]);
-          ctx.beginPath();
-          ctx.roundRect(sx - 3, sy - 3, sw + 6, sh + 6, radius + 2);
+          traceSlotPath(ctx, slot.shape, sx - 3, sy - 3, sw + 6, sh + 6, radius + 2);
           ctx.stroke();
           ctx.restore();
         }
@@ -501,6 +514,57 @@ export default function Composer({
     }
   };
 
+  const handleGenerateShareLink = async () => {
+    setSharingLink(true);
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const dataUrl = canvas.toDataURL("image/png", 0.95);
+      const res = await createShareableKeepsakeAction(
+        roomCode,
+        frameName,
+        dataUrl
+      );
+      setShareLink(res.shareUrl);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to create share link");
+    } finally {
+      setSharingLink(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailInput.trim()) return;
+    setSendingEmail(true);
+    setEmailError(null);
+    setEmailSuccess(null);
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const dataUrl = canvas.toDataURL("image/png", 0.95);
+      const res = await sendKeepsakeEmailAction(
+        roomCode,
+        frameName,
+        dataUrl,
+        [emailInput.trim()]
+      );
+      if (res.success) {
+        setEmailSuccess(
+          `Keepsake sent to ${emailInput.trim()}! Please check your inbox.`
+        );
+        setTimeout(() => setShowEmailModal(false), 3000);
+      } else {
+        setEmailError(res.error ?? "Failed to send keepsake email");
+      }
+    } catch (err: unknown) {
+      setEmailError(
+        err instanceof Error ? err.message : "Failed to send keepsake email"
+      );
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
   const selectedSlot: FrameSlot | undefined = frameConfig.slots.find(
     (s) => s.id === selectedSlotId
   );
@@ -655,12 +719,168 @@ export default function Composer({
 
           <button
             type="button"
+            className="button button-share-link"
+            onClick={handleGenerateShareLink}
+            disabled={sharingLink}
+          >
+            {sharingLink ? (
+              <>
+                <Loader2 size={18} className="spin" /> Generating…
+              </>
+            ) : (
+              <>
+                <Share2 size={18} /> Share Private Link
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            className="button button-email"
+            onClick={() => setShowEmailModal(true)}
+          >
+            <Mail size={18} /> Email Keepsake
+          </button>
+
+          <button
+            type="button"
             className="button button-quiet"
             onClick={onRetake}
             disabled={exportingHd || gdriveStatus === "authorizing" || gdriveStatus === "uploading"}
           >
             <RotateCcw size={16} /> Retake
           </button>
+        </div>
+      )}
+
+      {/* ── Shareable Link Banner ── */}
+      {shareLink && (
+        <div className="share-link-banner">
+          <div className="share-link-header">
+            <Share2 size={15} />
+            <span>Private 24-Hour Link</span>
+          </div>
+          <div className="share-link-input-wrap">
+            <input
+              type="text"
+              readOnly
+              value={shareLink}
+              className="share-link-field"
+            />
+            <button
+              type="button"
+              className="button button-primary button-sm"
+              onClick={() => {
+                navigator.clipboard.writeText(shareLink);
+                setCopiedShareLink(true);
+                setTimeout(() => setCopiedShareLink(false), 2500);
+              }}
+            >
+              {copiedShareLink ? (
+                <>
+                  <Check size={13} /> Copied!
+                </>
+              ) : (
+                <>
+                  <Copy size={13} /> Copy Link
+                </>
+              )}
+            </button>
+          </div>
+          <p className="share-link-note">
+            Anyone with this link can view and download your keepsake for 24
+            hours.
+          </p>
+        </div>
+      )}
+
+      {/* ── Email Delivery Modal ── */}
+      {showEmailModal && (
+        <div
+          className="custom-frame-modal-backdrop"
+          onClick={() => setShowEmailModal(false)}
+        >
+          <div
+            className="email-keepsake-card"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <Mail size={18} className="text-rose" />
+                <h3>Email Keepsake to Inbox</h3>
+              </div>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setShowEmailModal(false)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="email-modal-body">
+              <p>
+                Send the full-resolution keepsake directly to your email inbox
+                as a high-definition attachment.
+              </p>
+
+              {emailSuccess && (
+                <div className="gdrive-feedback gdrive-success">
+                  <CheckCircle size={15} />
+                  <span>{emailSuccess}</span>
+                </div>
+              )}
+
+              {emailError && (
+                <div className="gdrive-feedback gdrive-error">
+                  <AlertCircle size={15} />
+                  <span>{emailError}</span>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="keepsake-email">Recipient Email</label>
+                <input
+                  id="keepsake-email"
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="e.g. couple@example.com"
+                  className="modal-text-input"
+                />
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="button button-quiet"
+                onClick={() => setShowEmailModal(false)}
+                disabled={sendingEmail}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={handleSendEmail}
+                disabled={sendingEmail || !emailInput.trim()}
+              >
+                {sendingEmail ? (
+                  <>
+                    <Loader2 size={16} className="spin" /> Sending…
+                  </>
+                ) : (
+                  <>
+                    <Mail size={16} /> Send Keepsake
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
